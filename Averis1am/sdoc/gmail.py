@@ -69,6 +69,20 @@ def _skip_attachment(filename, mime, headers, payload):
     return False
 
 
+def safe_filename(name):
+    """Attachment filenames come from untrusted MIME headers.
+
+    Keep the basename only: a crafted name like '../../x.py' must never escape
+    the attachment root. The serve path in api.py is already defended; this is
+    the matching guard for the write path.
+    """
+    base = re.split(r"[\\/]", str(name or ""))[-1].replace("\x00", "")
+    if base in ("", ".", ".."):
+        return "attachment"
+    base = re.sub(r"[^A-Za-z0-9._-]", "_", base).lstrip(".")
+    return base[:128] or "attachment"
+
+
 class GmailConfig:
     def __init__(self):
         self.client_id = os.environ.get("GOOGLE_CLIENT_ID", "")
@@ -184,7 +198,7 @@ class GmailSource:
             payload = _b64decode(data)
             if _skip_attachment(filename, mime, _part_headers(part), payload):
                 return
-            path = f"attachments/gmail/{message_id}/{filename}"
+            path = f"attachments/gmail/{message_id}/{safe_filename(filename)}"
             self._attachments[path] = payload
             disk_path = self.attachment_root / path
             disk_path.parent.mkdir(parents=True, exist_ok=True)
@@ -354,7 +368,7 @@ class GmailSyncService:
         return disk_path
 
     def _attachment_payload(self, source, message_id, part, filename):
-        if (part.get("filename") or "") == filename:
+        if safe_filename(part.get("filename") or "") == filename:
             body = part.get("body") or {}
             data = body.get("data")
             if not data and body.get("attachmentId"):
