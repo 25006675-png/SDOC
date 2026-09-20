@@ -1,0 +1,10 @@
+{
+  "email_id": "demo_002",
+  "from": "shipping.documentation@example.com",
+  "subject": "Document verification / 9DMO-10002",
+  "body": "Please compare the SI and draft BL for 9DMO-10002. Equivalent weight units.",
+  "attachments": [
+    "attachments/demo_002_SI.pdf",
+    "attachments/demo_002_BL.pdf"
+  ]
+}

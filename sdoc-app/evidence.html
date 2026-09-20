@@ -1,0 +1,58 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Evidence preview · SDOC</title>
+  <style>
+    body { margin: 0; font-family: Arial, sans-serif; color: #12221b; background: #f4f7f5; }
+    header { display: flex; justify-content: space-between; gap: 16px; align-items: center; padding: 14px 18px; background: white; border-bottom: 1px solid #dbe4df; }
+    h1 { margin: 0; font-size: 16px; } p { margin: 4px 0 0; color: #62716a; font-size: 13px; }
+    .actions { display: flex; gap: 8px; align-items: center; }
+    a, button { min-height: 32px; padding: 0 11px; border: 1px solid #aac3b6; border-radius: 6px; color: #1e5940; background: white; font-weight: 700; text-decoration: none; cursor: pointer; }
+    main { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 14px; padding: 14px; height: calc(100vh - 63px); box-sizing: border-box; }
+    .viewer { position: relative; background: #111; border-radius: 10px; overflow: hidden; }
+    iframe { width: 100%; height: 100%; border: 0; background: white; }
+    .overlay { position: absolute; border: 3px solid #ff8a00; background: rgba(255, 138, 0, .16); box-shadow: 0 0 0 9999px rgba(0,0,0,.08); pointer-events: none; display: none; }
+    aside { background: white; border: 1px solid #dbe4df; border-radius: 10px; padding: 16px; overflow: auto; }
+    dl { margin: 0; display: grid; gap: 12px; } dt { color: #62716a; font-size: 12px; } dd { margin: 3px 0 0; font-size: 13px; overflow-wrap: anywhere; }
+    code { white-space: pre-wrap; }
+    @media (max-width: 850px) { main { grid-template-columns: 1fr; height: auto; } .viewer { height: 70vh; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div><h1 id="title">Evidence preview</h1><p id="subtitle">Original file with dynamic overlay</p></div>
+    <div class="actions"><button id="toggle">Evidence overlay</button><a id="download">Download</a></div>
+  </header>
+  <main>
+    <section class="viewer"><iframe id="frame"></iframe><div id="box" class="overlay"></div></section>
+    <aside><dl id="facts"></dl></aside>
+  </main>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const path = params.get('path') || '';
+    const page = params.get('page') || '1';
+    const bbox = (params.get('bbox') || '').split(',').map(Number);
+    const text = params.get('text') || '';
+    const field = params.get('field') || 'Evidence';
+    const side = params.get('side') || '';
+    const preview = `/api/attachments/preview?path=${encodeURIComponent(path)}#page=${encodeURIComponent(page)}`;
+    document.getElementById('frame').src = preview;
+    document.getElementById('download').href = `/api/attachments/download?path=${encodeURIComponent(path)}`;
+    document.getElementById('title').textContent = `${field}${side ? ' · ' + side : ''}`;
+    document.getElementById('subtitle').textContent = path.split('/').pop() || 'Original document';
+    const facts = [['Document', path], ['Page', page], ['Source text', text || 'No source snippet stored yet.'], ['Bounding box', bbox.length === 4 && bbox.every(n => !Number.isNaN(n)) ? `[${bbox.join(', ')}]` : 'No box stored yet']];
+    document.getElementById('facts').replaceChildren(...facts.map(([k,v]) => { const wrap=document.createElement('div'); const dt=document.createElement('dt'); const dd=document.createElement('dd'); dt.textContent=k; dd.textContent=v; wrap.append(dt,dd); return wrap; }));
+    let visible = true;
+    function draw() {
+      const box = document.getElementById('box');
+      if (!visible || bbox.length !== 4 || bbox.some(n => Number.isNaN(n))) { box.style.display='none'; return; }
+      box.style.display='block';
+      box.style.left='18%'; box.style.top='24%'; box.style.width='42%'; box.style.height='10%';
+    }
+    document.getElementById('toggle').addEventListener('click', () => { visible = !visible; draw(); });
+    draw();
+  </script>
+</body>
+</html>

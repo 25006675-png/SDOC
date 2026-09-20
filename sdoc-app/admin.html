@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0a1720">
+  <meta name="description" content="SDOC operational analytics for shipping document verification.">
+  <title>SDOC Admin Analytics</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="admin.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#analytics">Skip to analytics</a>
+  <div class="shell">
+    <aside class="sidebar">
+      <a class="brand" href="/app/" aria-label="SDOC workspace home">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+        <span>SDOC<span class="brand-dot">.</span></span>
+      </a>
+      <nav aria-label="Product areas">
+        <a class="nav-item" href="/app/"><span class="nav-icon" aria-hidden="true">&#9671;</span>Worker queue</a>
+        <a class="nav-item is-active" href="/app/admin.html"><span class="nav-icon" aria-hidden="true">%</span>Admin metrics</a>
+      </nav>
+      <div class="sidebar-foot">
+        <span class="connection-dot" id="connection-dot"></span>
+        <span><strong id="connection-label">Connecting</strong><small id="store-label">Checking backend</small></span>
+      </div>
+    </aside>
+
+    <main id="analytics">
+      <header class="topbar">
+        <div>
+          <h1>Operations analytics</h1>
+          <p>Measured workflow health, quality signals, and human-review demand.</p>
+        </div>
+        <button class="icon-button" id="admin-refresh" type="button" aria-label="Refresh analytics" title="Refresh analytics">&#8635;</button>
+      </header>
+
+      <section class="admin-summary" aria-label="Key operational metrics">
+        <article><span>Processed messages</span><strong id="processed-messages">—</strong><small>Comparison and routed mail</small></article>
+        <article><span>Automated resolution</span><strong id="automation-rate">—</strong><small>Cases currently verified</small></article>
+        <article><span>Manual review rate</span><strong id="review-rate">—</strong><small>Action-required cases</small></article>
+        <article><span>Active backlog</span><strong id="active-backlog">—</strong><small>Action and waiting cases</small></article>
+      </section>
+
+      <div class="analytics-grid">
+        <section class="analytics-card analytics-wide">
+          <header><div><h2>Case distribution</h2><p>Current state across persisted shipment cases.</p></div><strong id="total-cases">—</strong></header>
+          <div class="bar-list" id="state-bars"></div>
+        </section>
+        <section class="analytics-card">
+          <header><div><h2>Review workload</h2><p>Tasks requiring or completed by a person.</p></div></header>
+          <dl class="metric-list">
+            <div><dt>Open tasks</dt><dd id="open-tasks">—</dd></div>
+            <div><dt>Classification review</dt><dd id="classification-review">—</dd></div>
+            <div><dt>Resolved tasks</dt><dd id="resolved-tasks">—</dd></div>
+            <div><dt>Oldest action</dt><dd id="oldest-action">—</dd></div>
+            <div><dt>Average resolution</dt><dd id="average-resolution">—</dd></div>
+          </dl>
+        </section>
+        <section class="analytics-card">
+          <header><div><h2>Verification reliability</h2><p>Independent reads recorded in comparison evidence.</p></div></header>
+          <div class="reliability-score"><strong id="agreement-rate">—</strong><span>verifier agreement</span></div>
+          <dl class="metric-list compact">
+            <div><dt>Checks</dt><dd id="verifier-checks">—</dd></div>
+            <div><dt>Disagreements</dt><dd id="verifier-disagreements">—</dd></div>
+            <div><dt>Provider failures</dt><dd id="verifier-failures">—</dd></div>
+          </dl>
+        </section>
+        <section class="analytics-card">
+          <header><div><h2>SLA attention</h2><p>Observable risk signals; no assumed SLA target.</p></div></header>
+          <dl class="metric-list">
+            <div><dt>Waiting for documents</dt><dd id="waiting-cases">—</dd></div>
+            <div><dt>Overdue / blocked</dt><dd id="overdue-cases">—</dd></div>
+          </dl>
+          <p class="definition-note">A case becomes blocked only after the configured waiting timeout.</p>
+        </section>
+        <section class="analytics-card">
+          <header><div><h2>Discrepancy fields</h2><p>Fields most often recorded as different.</p></div></header>
+          <div class="rank-list" id="field-ranking"></div>
+        </section>
+      </div>
+      <p class="data-note" id="data-note" role="status">Loading persisted metrics…</p>
+    </main>
+  </div>
+</body>
+</html>

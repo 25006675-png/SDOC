@@ -1,0 +1,10 @@
+{
+  "email_id": "demo_003",
+  "from": "shipping.documentation@example.com",
+  "subject": "Document verification / 9DMO-10003",
+  "body": "Please compare the SI and draft BL for 9DMO-10003. Container mismatch.",
+  "attachments": [
+    "attachments/demo_003_SI.pdf",
+    "attachments/demo_003_BL.pdf"
+  ]
+}

@@ -1,0 +1,76 @@
+{
+  "name": "SDOC derived advanced validation set",
+  "source": "Organizer bundle email_405 values",
+  "official_dataset_modified": false,
+  "cases": [
+    {
+      "email_id": "demo_001",
+      "shipment_reference": "9DMO-10001",
+      "expected_status": "OK",
+      "expected_review_reason": null,
+      "expected_defect_fields": []
+    },
+    {
+      "email_id": "demo_002",
+      "shipment_reference": "9DMO-10002",
+      "expected_status": "OK",
+      "expected_review_reason": null,
+      "expected_defect_fields": []
+    },
+    {
+      "email_id": "demo_003",
+      "shipment_reference": "9DMO-10003",
+      "expected_status": "MISMATCH",
+      "expected_review_reason": null,
+      "expected_defect_fields": [
+        "container_count"
+      ]
+    },
+    {
+      "email_id": "demo_004",
+      "shipment_reference": "9DMO-10004",
+      "expected_status": "OK",
+      "expected_review_reason": null,
+      "expected_defect_fields": []
+    },
+    {
+      "email_id": "demo_005a",
+      "shipment_reference": "9DMO-10005",
+      "expected_status": "MISMATCH",
+      "expected_review_reason": null,
+      "expected_defect_fields": [
+        "container_count"
+      ]
+    },
+    {
+      "email_id": "demo_005b",
+      "shipment_reference": "9DMO-10005",
+      "expected_status": "OK",
+      "expected_review_reason": null,
+      "expected_defect_fields": []
+    },
+    {
+      "email_id": "demo_006",
+      "shipment_reference": "9DMO-10006",
+      "expected_status": "NEEDS_REVIEW",
+      "expected_review_reason": "missing_value",
+      "expected_defect_fields": []
+    },
+    {
+      "email_id": "demo_007",
+      "shipment_reference": "9DMO-10007",
+      "expected_status": "NEEDS_REVIEW",
+      "expected_review_reason": "missing_attachment",
+      "expected_defect_fields": []
+    }
+  ],
+  "expected_final_states": {
+    "9DMO-10001": "VERIFIED",
+    "9DMO-10002": "VERIFIED",
+    "9DMO-10003": "DISCREPANCY",
+    "9DMO-10004": "VERIFIED",
+    "9DMO-10005": "VERIFIED",
+    "9DMO-10006": "NEEDS_REVIEW",
+    "9DMO-10007": "WAITING"
+  }
+}

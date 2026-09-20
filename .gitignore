@@ -1,0 +1,18 @@
+.env
+**/__pycache__/
+*.py[cod]
+*.db
+*.db-shm
+*.db-wal
+.pytest_cache/
+.impeccable/live/sessions/
+sdoc-hackathon-bundle
+Averis1am/sdoc-hackathon-bundle/
+
+# Gmail OAuth credentials and sync state
+Averis1am/data/gmail_token.json
+Averis1am/data/gmail_state.json
+
+# Mailbox attachments and runtime logs
+Averis1am/data/attachments/
+Averis1am/data/*.log

@@ -1,0 +1,9 @@
+{
+  "email_id": "demo_007",
+  "from": "shipping.documentation@example.com",
+  "subject": "Document verification / 9DMO-10007",
+  "body": "Please compare the SI and draft BL for 9DMO-10007. Draft BL is missing.",
+  "attachments": [
+    "attachments/demo_007_SI.pdf"
+  ]
+}

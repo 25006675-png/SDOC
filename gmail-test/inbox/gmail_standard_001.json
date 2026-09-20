@@ -1,0 +1,10 @@
+{
+  "email_id": "gmail_standard_001",
+  "from": "shipper.demo@example.com",
+  "subject": "TO CONFIRM DOCS _ GMAIL-STD-0001",
+  "body": "Dear documentation team,\n\nPlease compare the attached shipping instruction and draft bill of lading for GMAIL-STD-0001.\n\nRegards,\nDemo Shipper",
+  "attachments": [
+    "attachments/GMAIL-STD-0001_SI.pdf",
+    "attachments/GMAIL-STD-0001_Draft_BL.pdf"
+  ]
+}

@@ -1,0 +1,12 @@
+fastapi
+httpx
+openpyxl
+pdfplumber
+pillow
+pypdfium2
+python-docx
+python-dotenv
+pytesseract
+reportlab
+truststore
+uvicorn

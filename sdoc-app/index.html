@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0a1720">
+  <meta name="description" content="SDOC worker workspace for shipping document verification.">
+  <title>SDOC Workspace</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#workspace">Skip to workspace</a>
+  <div class="shell">
+    <aside class="sidebar">
+      <a class="brand" href="/app/" aria-label="SDOC workspace home">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+        <span>SDOC<span class="brand-dot">.</span></span>
+      </a>
+      <nav aria-label="Workspace views">
+        <button class="nav-item is-active" data-view="action" type="button">
+          <span class="nav-icon" aria-hidden="true">◇</span>
+          Action queue
+          <span class="nav-count" id="nav-action-count">0</span>
+        </button>
+        <button class="nav-item" data-view="all" type="button">
+          <span class="nav-icon" aria-hidden="true">▤</span>
+          All cases
+        </button>
+        <button class="nav-item" data-view="routed" type="button">
+          <span class="nav-icon" aria-hidden="true">↗</span>
+          Routed mail
+        </button>
+        <a class="nav-item" href="/app/admin.html">
+          <span class="nav-icon" aria-hidden="true">%</span>
+          Admin metrics
+        </a>
+      </nav>
+      <div class="sidebar-foot">
+        <span class="connection-dot" id="connection-dot"></span>
+        <span><strong id="connection-label">Connecting</strong><small id="store-label">Checking backend</small></span>
+      </div>
+    </aside>
+
+    <main id="workspace">
+      <header class="topbar">
+        <div>
+          <h1>Document operations</h1>
+          <p>Review discrepancies, uncertain reads, and missing documents.</p>
+        </div>
+        <div class="topbar-actions">
+          <label class="search">
+            <span class="sr-only">Search cases</span>
+            <span aria-hidden="true">⌕</span>
+            <input id="search-input" type="search" placeholder="Search shipment reference" autocomplete="off">
+          </label>
+          <button class="icon-button" id="refresh-button" type="button" aria-label="Refresh workspace" title="Refresh workspace">↻</button>
+        </div>
+      </header>
+
+      <section class="metrics" aria-label="Operational summary">
+        <div><span>Action required</span><strong id="metric-action">0</strong></div>
+        <div><span>Verified</span><strong id="metric-verified">0</strong></div>
+        <div><span>Waiting</span><strong id="metric-waiting">0</strong></div>
+        <div><span>Routed mail</span><strong id="metric-routed">0</strong></div>
+      </section>
+
+      <section class="mailbox-panel" aria-label="Mailbox connection">
+        <div class="mailbox-status">
+          <span class="mailbox-dot" id="mailbox-dot"></span>
+          <div>
+            <h2 id="mailbox-title">Gmail not connected</h2>
+            <p id="mailbox-detail">Connect a mailbox to analyze new shipping document emails.</p>
+          </div>
+        </div>
+        <div class="mailbox-meta">
+          <span id="mailbox-query">No query active</span>
+          <span id="mailbox-sync">Never synced</span>
+        </div>
+        <div class="mailbox-actions">
+          <button class="secondary-button" id="mailbox-connect" type="button">Connect Gmail</button>
+          <button class="primary-button" id="mailbox-sync-button" type="button">Sync now</button>
+        </div>
+      </section>
+
+      <details class="routed-preview" id="routed-preview">
+        <summary>
+          <span>Routed mail</span>
+          <strong id="routed-preview-count">0</strong>
+        </summary>
+        <div class="routed-preview-list" id="routed-preview-list">
+          <p>No unrelated mail has been routed yet.</p>
+        </div>
+      </details>
+
+      <section class="work-area">
+        <div class="queue-panel">
+          <div class="panel-heading">
+            <div><h2 id="queue-title">Action queue</h2><p id="queue-description">Cases requiring a person.</p></div>
+            <select id="state-filter" aria-label="Filter cases by state">
+              <option value="ACTION">All actions</option>
+              <option value="DISCREPANCY">Discrepancy</option>
+              <option value="NEEDS_REVIEW">Needs review</option>
+              <option value="BLOCKED">Blocked</option>
+              <option value="WAITING">Waiting</option>
+              <option value="VERIFIED">Verified</option>
+              <option value="ALL">All states</option>
+            </select>
+          </div>
+          <div class="queue-status" id="queue-status" role="status">Loading cases…</div>
+          <div class="case-list" id="case-list" aria-live="polite"></div>
+        </div>
+
+        <article class="detail-panel" id="case-detail" aria-live="polite">
+          <div class="empty-state">
+            <span class="empty-symbol" aria-hidden="true">◇</span>
+            <h2>Select a shipment case</h2>
+            <p>Choose an item from the queue to inspect fields, document versions, and review history.</p>
+          </div>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <template id="loading-template">
+    <div class="detail-loading" aria-label="Loading case">
+      <span></span><span></span><span></span><span></span>
+    </div>
+  </template>
+</body>
+</html>
