@@ -363,7 +363,7 @@
     head.append(title, stateBadge(data.state));
     const body = element('div', 'detail-body');
     const latest = data.comparisons?.at(-1);
-    body.append(renderComparison(latest, data.state));
+    body.append(renderComparison(latest, data.state, data.case_id));
     if (latest?.evidence?.classification) body.append(renderClassification(latest.evidence.classification));
     if (data.emails?.length) body.append(renderSourceEmails(data.emails, latest?.evidence));
     if (data.documents?.length) body.append(renderDocuments(data.documents));
@@ -423,7 +423,54 @@
     return section;
   }
 
-  function renderComparison(comparison, caseState) {
+  function correctionRow(caseId, field, evidence) {
+    const row = element('tr', 'correction-row');
+    row.hidden = true;
+    const cell = element('td');
+    cell.colSpan = 5;
+    const form = element('form', 'correction-form');
+    const side = document.createElement('select');
+    [['si', 'Shipping instruction'], ['bl', 'Draft bill of lading']].forEach(([value, label]) => {
+      const option = document.createElement('option');
+      option.value = value; option.textContent = label;
+      side.append(option);
+    });
+    const value = element('input');
+    value.required = true;
+    value.placeholder = 'Corrected value, exactly as printed';
+    value.value = evidence.si ?? '';
+    side.addEventListener('change', () => { value.value = (side.value === 'si' ? evidence.si : evidence.bl) ?? ''; });
+    const actor = element('input');
+    actor.type = 'email'; actor.required = true; actor.placeholder = 'Your email';
+    const note = element('input');
+    note.placeholder = 'Why the original was wrong (optional)';
+    const submit = element('button', 'primary-button', 'Save and re-compare');
+    submit.type = 'submit';
+    const message = element('p', 'inline-message', '');
+    form.append(side, value, actor, note, submit);
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      submit.disabled = true; submit.textContent = 'Saving…';
+      try {
+        await api(`/api/cases/${caseId}/correct`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            field, side: side.value, value: value.value,
+            actor: actor.value, note: note.value || null
+          })
+        });
+        await loadWorkspace({ preserveSelection: true });
+      } catch (error) {
+        message.textContent = error.message;
+        submit.disabled = false; submit.textContent = 'Save and re-compare';
+      }
+    });
+    cell.append(form, message);
+    row.append(cell);
+    return row;
+  }
+
+  function renderComparison(comparison, caseState, caseId) {
     const section = element('section', 'detail-section comparison');
     section.append(element('h3', '', 'Field comparison'));
     if (!comparison?.evidence?.fields) {
@@ -464,14 +511,26 @@
     FIELD_ORDER.forEach(field => {
       const evidence = comparison.evidence.fields[field] || {};
       const row = element('tr', evidence.match === false ? 'is-different' : '');
+      const result = element('td', 'result-word', evidence.match === true ? 'Match' : evidence.match === false ? 'Different' : 'Review');
+      if (evidence.corrected) {
+        result.append(element('span', 'corrected-tag', `Corrected from ${evidence.corrected.from || 'blank'}`));
+      }
+      const actions = element('td');
+      actions.append(evidenceActions(field, evidence, comparison.evidence));
+      const correct = element('button', 'link-button', 'Correct');
+      correct.type = 'button';
+      actions.append(correct);
       row.append(
         element('td', '', FIELD_LABELS[field]),
         element('td', '', evidence.si ?? 'Unavailable'),
         element('td', '', evidence.bl ?? 'Unavailable'),
-        element('td', 'result-word', evidence.match === true ? 'Match' : evidence.match === false ? 'Different' : 'Review'),
-        (() => { const td = element('td'); td.append(evidenceActions(field, evidence, comparison.evidence)); return td; })()
+        result,
+        actions
       );
       tbody.append(row);
+      const editor = correctionRow(caseId, field, evidence);
+      tbody.append(editor);
+      correct.addEventListener('click', () => { editor.hidden = !editor.hidden; });
     });
     table.append(thead, tbody);
     section.append(table);

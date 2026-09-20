@@ -32,14 +32,30 @@ def compare_documents(si_pairs, bl_pairs, label_map=None, fuzzy=None,
     `fuzzy` (0..1, default off) lets near-identical strings count as matches —
     useful on messier real-world data where typos shouldn't raise a defect.
     """
+    return compare_values(
+        extract_fields(si_pairs, label_map),
+        extract_fields(bl_pairs, label_map),
+        fuzzy=fuzzy, fields=fields, field_kinds=field_kinds,
+        tolerances=tolerances,
+        si_sources=extract_field_sources(si_pairs, label_map),
+        bl_sources=extract_field_sources(bl_pairs, label_map),
+    )
+
+
+def compare_values(si_fields, bl_fields, fuzzy=None, fields=None,
+                   field_kinds=None, tolerances=None,
+                   si_sources=None, bl_sources=None):
+    """Compare already-extracted field values.
+
+    Split out of compare_documents so a human correction re-runs exactly the
+    same rules against the corrected value, rather than a second code path
+    that could disagree with the automated one.
+    """
     fields = fields or COMPARE_FIELDS
     kinds = field_kinds or {}
     tolerances = tolerances or {}
-
-    si_fields = extract_fields(si_pairs, label_map)
-    bl_fields = extract_fields(bl_pairs, label_map)
-    si_sources = extract_field_sources(si_pairs, label_map)
-    bl_sources = extract_field_sources(bl_pairs, label_map)
+    si_sources = si_sources or {}
+    bl_sources = bl_sources or {}
 
     si_vals = {f: norm_value(f, si_fields.get(f), kinds.get(f)) for f in fields}
     bl_vals = {f: norm_value(f, bl_fields.get(f), kinds.get(f)) for f in fields}

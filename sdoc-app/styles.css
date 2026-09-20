@@ -391,3 +391,25 @@ main { min-width: 0; padding: 0 30px 34px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+/* Correct Extraction: inline field correction inside the comparison table. */
+.link-button {
+  margin-left: 8px; padding: 4px 9px; min-height: 28px;
+  border: 1px solid #aac3b6; border-radius: 6px; background: white;
+  color: #1e5940; font-weight: 700; font-size: 12px; cursor: pointer;
+}
+.link-button:hover { background: #dfece5; }
+.corrected-tag {
+  display: block; margin-top: 4px; font-size: 11px; font-weight: 600;
+  color: #7a5a17;
+}
+.correction-row > td { background: #fbf7ee; padding: 12px 14px; }
+.correction-form {
+  display: grid; gap: 9px;
+  grid-template-columns: minmax(160px, .8fr) minmax(180px, 1fr) minmax(160px, .9fr) minmax(180px, 1fr) auto;
+}
+.correction-form input, .correction-form select {
+  min-height: 40px; border: 1px solid #d8cdb5; border-radius: 6px;
+  padding: 8px 10px; color: var(--ink); background: white;
+}
+@media (max-width: 900px) { .correction-form { grid-template-columns: 1fr; } }

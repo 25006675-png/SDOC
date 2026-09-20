@@ -109,6 +109,19 @@ CREATE TABLE IF NOT EXISTS review_tasks (
 CREATE UNIQUE INDEX IF NOT EXISTS one_open_task_per_case
 ON review_tasks(case_id) WHERE status = 'OPEN';
 
+CREATE TABLE IF NOT EXISTS field_corrections (
+    correction_id  INTEGER PRIMARY KEY AUTOINCREMENT,
+    case_id        TEXT NOT NULL REFERENCES shipment_cases(case_id),
+    comparison_id  INTEGER NOT NULL REFERENCES comparisons(comparison_id),
+    field          TEXT NOT NULL,
+    side           TEXT NOT NULL,
+    old_value      TEXT,
+    new_value      TEXT,
+    actor          TEXT NOT NULL,
+    note           TEXT,
+    created_at     REAL NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS audit_events (
     event_id       INTEGER PRIMARY KEY AUTOINCREMENT,
     case_id        TEXT NOT NULL REFERENCES shipment_cases(case_id),
@@ -161,6 +174,43 @@ def product_state(record):
     if status == "NEEDS_REVIEW":
         return "NEEDS_REVIEW"
     return "VERIFIED"
+
+
+def apply_correction(evidence, field, side, value, actor, now):
+    """Recompute a stored comparison with one corrected extracted value.
+
+    Shared by both stores so the Correct Extraction action runs the same
+    comparison rules as the automated path, whichever backend persists it.
+
+    -> (evidence, result); raises ValueError for an unknown field or side.
+    """
+    from .compare import compare_values
+
+    if side not in ("si", "bl"):
+        raise ValueError("side must be 'si' or 'bl'")
+    evidence = dict(evidence or {})
+    fields = evidence.get("fields") or {}
+    if field not in fields:
+        raise ValueError(f"unknown field: {field}")
+
+    before = fields[field].get(side)
+    si_vals = {f: v.get("si") for f, v in fields.items()}
+    bl_vals = {f: v.get("bl") for f, v in fields.items()}
+    (si_vals if side == "si" else bl_vals)[field] = value
+    result = compare_values(
+        si_vals, bl_vals, fields=list(fields),
+        si_sources={f: v["si_source"] for f, v in fields.items()
+                    if v.get("si_source")},
+        bl_sources={f: v["bl_source"] for f, v in fields.items()
+                    if v.get("bl_source")},
+    )
+    result["fields"][field]["corrected"] = {
+        "side": side, "from": before, "to": value, "actor": actor, "at": now,
+    }
+    evidence["fields"] = result["fields"]
+    evidence["confidence"] = result.get("confidence")
+    result["old_value"] = before
+    return evidence, result
 
 
 def document_version(path):
@@ -398,6 +448,54 @@ class CaseStore:
                 self._sync_review_task(case_id, "BLOCKED", "missing_document_timeout", now)
         return [row["case_id"] for row in rows]
 
+    def correct_field(self, case_id, field, side, value, actor, note=None,
+                      now=None):
+        """Replace one extracted value and re-decide the case.
+
+        The Correct Extraction action of v2 §9: the previous value is kept as
+        evidence, and the corrected values go back through the same comparison
+        rules that produced the original result rather than a second code path
+        that could disagree with it.
+        """
+        now = now or time.time()
+        with self.con:
+            row = self.con.execute(
+                "SELECT * FROM comparisons WHERE case_id=? "
+                "ORDER BY created_at DESC, comparison_id DESC LIMIT 1",
+                (case_id,),
+            ).fetchone()
+            if not row:
+                raise ValueError("case has no comparison to correct")
+            evidence, result = apply_correction(
+                json.loads(row["evidence_json"]), field, side, value, actor, now)
+            before = result["old_value"]
+
+            state = product_state(result)
+            reason = result.get("review_reason")
+            self.con.execute(
+                "UPDATE comparisons SET state=?,defect_fields=?,evidence_json=? "
+                "WHERE comparison_id=?",
+                (state, _json(result["defect_fields"]), _json(evidence),
+                 row["comparison_id"]),
+            )
+            self.con.execute(
+                "INSERT INTO field_corrections(case_id,comparison_id,field,side,"
+                "old_value,new_value,actor,note,created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                (case_id, row["comparison_id"], field, side, before, value,
+                 actor, note, now),
+            )
+            self._set_state(case_id, state, reason, now)
+            self._sync_review_task(case_id, state, reason, now)
+            self._event(
+                case_id,
+                "EXTRACTION_CORRECTED",
+                {"field": field, "side": side, "from": before, "to": value,
+                 "note": note, "new_state": state},
+                actor=actor,
+                now=now,
+            )
+        return self.get_case(case_id)
+
     def resolve_task(self, task_id, actor, note=None, now=None):
         now = now or time.time()
         with self.con:
@@ -474,6 +572,13 @@ class CaseStore:
             dict(row)
             for row in self.con.execute(
                 "SELECT * FROM review_tasks WHERE case_id=? ORDER BY task_id", (case_id,)
+            )
+        ]
+        data["corrections"] = [
+            dict(row)
+            for row in self.con.execute(
+                "SELECT * FROM field_corrections WHERE case_id=? ORDER BY correction_id",
+                (case_id,),
             )
         ]
         data["comparisons"] = []

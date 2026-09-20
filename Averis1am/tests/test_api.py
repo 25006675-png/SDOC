@@ -135,3 +135,72 @@ class TestApi(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestCorrectFieldEndpoint(unittest.TestCase):
+    """The Correct Extraction action over HTTP (v2 §9)."""
+
+    def setUp(self):
+        self.store = CaseStore(":memory:")
+        same = {
+            "shipper": "APRIL FAR EAST",
+            "consignee": "EAST BRIGHT FZ-LLC",
+            "notify_party": "EAST BRIGHT FZ-LLC",
+            "port_of_loading": "NANTONG, CHINA",
+            "port_of_discharge": "KARACHI, PAKISTAN",
+            "gross_weight_kg": "131,058 KG",
+        }
+        fields = {f: {"si": v, "bl": v, "match": True, "sim": 1.0}
+                  for f, v in same.items()}
+        fields["container_count"] = {"si": "6", "bl": "7", "match": False,
+                                     "sim": 0.0}
+        self.store.ingest_result(
+            {"email_id": "c_001", "from": "ops@example.com",
+             "subject": "Check 9API-20002", "body": "compare",
+             "attachments": ["attachments/b_SI.pdf", "attachments/b_BL.pdf"]},
+            {"category": "BL_COMPARISON", "status": "MISMATCH",
+             "review_reason": None, "defect_fields": ["container_count"],
+             "has_defect": True, "decided_by": "rule"},
+            {"fields": fields, "si_doc": "attachments/b_SI.pdf",
+             "bl_doc": "attachments/b_BL.pdf"},
+            now=100,
+        )
+        self.case_id = self.store.list_cases()[0]["case_id"]
+        self.app = create_app(self.store, start_scheduler=False)
+        self.client = TestClient(self.app)
+        self.client.__enter__()
+
+    def tearDown(self):
+        self.client.__exit__(None, None, None)
+        self.store.close()
+
+    def _correct(self, **kw):
+        payload = {"field": "container_count", "side": "bl", "value": "6",
+                   "actor": "worker@example.com", "note": "misread"}
+        payload.update(kw)
+        return self.client.post(f"/api/cases/{self.case_id}/correct",
+                                json=payload)
+
+    def test_correction_clears_the_discrepancy(self):
+        response = self._correct()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["state"], "VERIFIED")
+
+    def test_correction_is_returned_with_before_and_after(self):
+        correction = self._correct().json()["corrections"][0]
+        self.assertEqual(correction["old_value"], "7")
+        self.assertEqual(correction["new_value"], "6")
+
+    def test_unknown_field_is_a_client_error(self):
+        self.assertEqual(self._correct(field="nope").status_code, 400)
+
+    def test_invalid_side_is_rejected_by_validation(self):
+        self.assertEqual(self._correct(side="middle").status_code, 422)
+
+    def test_unknown_case_is_a_client_error(self):
+        response = self.client.post(
+            "/api/cases/case_missing/correct",
+            json={"field": "container_count", "side": "bl", "value": "6",
+                  "actor": "worker@example.com"},
+        )
+        self.assertEqual(response.status_code, 400)

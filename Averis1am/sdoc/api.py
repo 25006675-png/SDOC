@@ -7,6 +7,7 @@ import os
 import httpx
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
+from typing import Literal
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query, Request
@@ -32,6 +33,14 @@ class ResolveTaskRequest(BaseModel):
 
 class OverdueRequest(BaseModel):
     wait_seconds: int = Field(default=86400, ge=1, le=60 * 60 * 24 * 90)
+
+
+class CorrectFieldRequest(BaseModel):
+    field: str = Field(min_length=1, max_length=100)
+    side: Literal["si", "bl"]
+    value: str = Field(max_length=1000)
+    actor: str = Field(min_length=1, max_length=200)
+    note: str | None = Field(default=None, max_length=2000)
 
 
 def create_store():
@@ -246,6 +255,19 @@ def create_app(store=None, start_scheduler=True):
     @app.post("/api/cases/mark-overdue")
     def mark_overdue(payload: OverdueRequest):
         return {"blocked_case_ids": app.state.store.mark_overdue(payload.wait_seconds)}
+
+    @app.post("/api/cases/{case_id}/correct")
+    def correct_field(case_id: str, payload: CorrectFieldRequest):
+        try:
+            case = app.state.store.correct_field(
+                case_id, payload.field, payload.side, payload.value,
+                payload.actor, payload.note,
+            )
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        if case is None:
+            raise HTTPException(404, "case not found")
+        return case
 
     @app.post("/api/review-tasks/{task_id}/resolve")
     def resolve_task(task_id: int, payload: ResolveTaskRequest):

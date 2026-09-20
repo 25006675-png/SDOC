@@ -6,6 +6,7 @@ landing page or browser code.
 """
 from __future__ import annotations
 
+import json
 import os
 import ssl
 import time
@@ -14,8 +15,30 @@ from pathlib import Path
 import httpx
 import truststore
 
-from .casework import document_version, product_state, shipment_reference, stable_case_id
+from .casework import (
+    apply_correction,
+    document_version,
+    product_state,
+    shipment_reference,
+    stable_case_id,
+)
 from .analytics import build_metrics
+
+
+def _normalise_comparison(row):
+    """Match the SQLite store's shape.
+
+    PostgREST returns the raw column name; the worker dashboard reads parsed
+    evidence under 'evidence', so both stores hand back the same thing.
+    """
+    row = dict(row)
+    evidence = row.pop("evidence_json", None)
+    if isinstance(evidence, str):
+        evidence = json.loads(evidence)
+    row["evidence"] = evidence or {}
+    if isinstance(row.get("defect_fields"), str):
+        row["defect_fields"] = json.loads(row["defect_fields"])
+    return row
 
 
 class SupabaseStore:
@@ -130,8 +153,16 @@ class SupabaseStore:
         case["review_tasks"] = self._request(
             "GET", "/review_tasks", params={**common, "select": "*", "order": "task_id.asc"}
         ) or []
-        case["comparisons"] = self._request(
-            "GET", "/comparisons", params={**common, "select": "*", "order": "comparison_id.asc"}
+        case["comparisons"] = [
+            _normalise_comparison(row)
+            for row in self._request(
+                "GET", "/comparisons",
+                params={**common, "select": "*", "order": "comparison_id.asc"},
+            ) or []
+        ]
+        case["corrections"] = self._request(
+            "GET", "/field_corrections",
+            params={**common, "select": "*", "order": "correction_id.asc"},
         ) or []
         case["audit_events"] = self._request(
             "GET", "/audit_events", params={**common, "select": "*", "order": "event_id.asc"}
@@ -144,6 +175,45 @@ class SupabaseStore:
             "/rpc/mark_sdoc_cases_overdue",
             json={"p_wait_seconds": wait_seconds, "p_now": now or time.time()},
         ) or []
+
+    def correct_field(self, case_id, field, side, value, actor, note=None,
+                      now=None):
+        """Re-decide the case in Python, then persist the result atomically.
+
+        The comparison rules stay in one place rather than being restated in
+        PL/pgSQL, where they could drift from the automated path.
+        """
+        now = now or time.time()
+        rows = self._request(
+            "GET", "/comparisons",
+            params={"case_id": f"eq.{case_id}", "select": "*",
+                    "order": "comparison_id.desc", "limit": "1"},
+        ) or []
+        if not rows:
+            raise ValueError("case has no comparison to correct")
+        row = _normalise_comparison(rows[0])
+        evidence, result = apply_correction(
+            row["evidence"], field, side, value, actor, now)
+        self._request(
+            "POST",
+            "/rpc/correct_sdoc_field",
+            json={
+                "p_case_id": case_id,
+                "p_comparison_id": row["comparison_id"],
+                "p_field": field,
+                "p_side": side,
+                "p_old_value": result["old_value"],
+                "p_new_value": value,
+                "p_state": product_state(result),
+                "p_reason": result.get("review_reason"),
+                "p_defect_fields": result["defect_fields"],
+                "p_evidence": evidence,
+                "p_actor": actor,
+                "p_note": note,
+                "p_now": now,
+            },
+        )
+        return self.get_case(case_id)
 
     def resolve_task(self, task_id, actor, note=None, now=None):
         return self._request(
