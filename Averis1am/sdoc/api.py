@@ -345,7 +345,7 @@ def create_app(store=None, start_scheduler=True):
                 status_code=401)
         role = account["role"]
         target = str(form.get("next") or ("/app/admin.html" if role == "admin" else "/app/"))
-        if not target.startswith("/app"):
+        if not target.startswith("/app") or target == "/app":
             target = "/app/"
         if role == "worker" and target.startswith("/app/admin"):
             target = "/app/"
@@ -588,6 +588,11 @@ def create_app(store=None, start_scheduler=True):
         except ValueError as exc:
             raise HTTPException(404, str(exc)) from exc
         return {"status": "resolved", "task_id": task_id}
+
+    @app.get("/app")
+    def app_root_slash():
+        """Without this, /app 404s instead of reaching the mounted app."""
+        return RedirectResponse("/app/", status_code=308)
 
     worker_app = ROOT.parent / "sdoc-app"
     if worker_app.exists():

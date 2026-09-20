@@ -337,3 +337,14 @@ class TestAccountAuth(unittest.TestCase):
         self._login("worker", "worker-pass")
         self.client.cookies.set("sdoc_session", "forged.value")
         self.assertEqual(self.client.get("/api/cases").status_code, 401)
+
+    def test_app_without_trailing_slash_reaches_the_workspace(self):
+        self._login("worker", "worker-pass")
+        response = self.client.get("/app", follow_redirects=False)
+        self.assertEqual(response.status_code, 308)
+        self.assertEqual(response.headers["location"], "/app/")
+        self.assertEqual(self.client.get("/app", follow_redirects=True).status_code, 200)
+
+    def test_signing_in_from_a_slashless_url_lands_somewhere_real(self):
+        response = self._login("worker", "worker-pass", next_path="/app")
+        self.assertEqual(response.headers["location"], "/app/")
