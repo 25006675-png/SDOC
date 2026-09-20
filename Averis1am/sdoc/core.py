@@ -78,9 +78,15 @@ def _process_bl(email, source, cfg, ev):
         # in evidence, where the queue and analytics use it.
         return "NEEDS_REVIEW", "unreadable", []
 
-    si_path, bl_path, docs, problem = identify_pair(atts, source, cfg)
+    reader_failures = []
+    si_path, bl_path, docs, problem = identify_pair(
+        atts, source, cfg, notes=reader_failures)
     ev["doc_kinds"] = {a: (doc_kind(*d) if d else "UNREADABLE")
                        for a, d in docs.items()}
+    if reader_failures:
+        # A reader timeout or crash is not the same as a corrupt file; say
+        # which one the reviewer is looking at (Addendum A6/A10).
+        ev["reader_failures"] = reader_failures
     if problem:
         return "NEEDS_REVIEW", problem, []
 

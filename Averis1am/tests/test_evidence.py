@@ -72,5 +72,54 @@ class TestComparisonCarriesEvidence(unittest.TestCase):
                          "Total Containers: 7 x 40'HC")
 
 
+
+class TestLlmExtractionKeepsEvidence(unittest.TestCase):
+    """Addendum A9: selecting the LLM stage must not lose source evidence.
+
+    The model reports the snippet it read a value from; deterministic code
+    resolves that snippet to a position in the transcription.
+    """
+
+    RAW = b"SHIPPING INSTRUCTION\nShipper: APRIL FINE PAPER\nGross Wt (kgs): 100 KG\n"
+
+    def _extract(self, extractor):
+        from sdoc.extractors import extract_document
+        return extract_document(self.RAW, "si.txt",
+                                {"extractor": "llm", "llm_extractor": extractor})
+
+    def test_reported_snippet_is_resolved_to_a_location(self):
+        def model(data, filename, problems=None):
+            return ("SI", [{"label": "Shipper", "value": "APRIL FINE PAPER",
+                            "source": {"source_snippet": "Shipper: APRIL FINE PAPER"}}])
+
+        sources = docs.extract_field_sources(self._extract(model)[1])
+        self.assertEqual(sources["shipper"]["line"], 2)
+        self.assertEqual(sources["shipper"]["source_text"],
+                         "Shipper: APRIL FINE PAPER")
+
+    def test_extractor_reporting_no_snippet_still_gets_evidence(self):
+        def model(data, filename, problems=None):
+            return ("SI", [("Gross Wt (kgs)", "100 KG")])
+
+        sources = docs.extract_field_sources(self._extract(model)[1])
+        self.assertEqual(sources["gross_weight_kg"]["line"], 3)
+
+    def test_value_absent_from_the_document_gets_no_false_location(self):
+        def model(data, filename, problems=None):
+            return ("SI", [{"label": "Consignee", "value": "INVENTED LTD",
+                            "source": {"source_snippet": "Consignee: INVENTED LTD"}}])
+
+        source = docs.extract_field_sources(self._extract(model)[1]).get("consignee", {})
+        # It may keep the model's own snippet, but must not claim a line it
+        # never appeared on.
+        self.assertNotIn("line", source)
+
+    def test_extraction_survives_a_failure_to_resolve(self):
+        def model(data, filename, problems=None):
+            return ("SI", [("Shipper", "APRIL FINE PAPER")])
+
+        doc = self._extract(model)
+        self.assertEqual(docs.extract_fields(doc[1])["shipper"], "APRIL FINE PAPER")
+
 if __name__ == "__main__":
     unittest.main()

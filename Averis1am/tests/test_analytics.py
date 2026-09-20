@@ -32,3 +32,34 @@ class TestAnalytics(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestExtractionStatusMetrics(unittest.TestCase):
+    """v2 §7.3 statuses reach §12.3's first-pass and recovery rates."""
+
+    def _metrics(self, *statuses):
+        comparisons = [
+            {"defect_fields": [], "evidence": {"validation": {
+                "si": {"status": si}, "bl": {"status": bl}}}}
+            for si, bl in statuses
+        ]
+        return build_metrics([], [], [], comparisons, 0, 0)
+
+    def test_reads_are_counted_per_document_not_per_case(self):
+        metrics = self._metrics(("FIRST_PASS_VALIDATED", "FIRST_PASS_VALIDATED"))
+        self.assertEqual(metrics["extraction_reads"], 2)
+
+    def test_first_pass_and_recovery_rates(self):
+        metrics = self._metrics(
+            ("FIRST_PASS_VALIDATED", "FIRST_PASS_VALIDATED"),
+            ("RECOVERED", "NEEDS_REVIEW"),
+        )
+        self.assertEqual(metrics["extraction_statuses"], {
+            "FIRST_PASS_VALIDATED": 2, "RECOVERED": 1, "NEEDS_REVIEW": 1})
+        self.assertEqual(metrics["first_pass_validated_rate"], 0.5)
+        self.assertEqual(metrics["recovered_rate"], 0.25)
+
+    def test_absent_validation_evidence_is_not_counted(self):
+        metrics = build_metrics([], [], [], [{"defect_fields": []}], 0, 0)
+        self.assertEqual(metrics["extraction_reads"], 0)
+        self.assertEqual(metrics["first_pass_validated_rate"], 0.0)

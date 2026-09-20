@@ -7,6 +7,9 @@ from urllib.parse import parse_qs, urlparse
 
 import httpx
 
+from unittest.mock import patch
+
+from sdoc import gmail
 from sdoc.gmail import GmailConfig, GmailSource, GmailSyncService
 
 
@@ -101,6 +104,60 @@ class TestGmailSource(unittest.TestCase):
             self.assertIn(second, pending)
             service.close()
 
+
+
+class _Stub:
+    """Stands in for a Gemini client; the real one needs keys."""
+
+    def close(self):
+        pass
+
+
+class TestSyncWiring(unittest.TestCase):
+    """Live mail must get the same independent second read as the demo import."""
+
+    def _case_cfg(self, env):
+        """Capture the config sync_once hands to CaseService."""
+        captured = {}
+
+        class _StopSync(RuntimeError):
+            pass
+
+        def fake_case_service(store, cfg=None):
+            captured.update(cfg or {})
+            raise _StopSync
+
+        with patch.dict("os.environ", env, clear=False), \
+             patch.object(gmail, "CaseService", fake_case_service), \
+             patch.object(gmail.GmailSyncService, "_access_token",
+                          return_value="token"), \
+             patch.object(gmail, "GmailSource"), \
+             patch.object(gmail, "GeminiEmailClassifier"), \
+             patch.object(gmail, "GeminiVerifier") as verifier:
+            verifier.return_value = _Stub()
+            service = gmail.GmailSyncService(
+                store=None, cfg=gmail.GmailConfig(), client=object())
+            with self.assertRaises(_StopSync):
+                service.sync_once()
+        return captured
+
+    def test_verifier_is_configured_when_keys_are_present(self):
+        cfg = self._case_cfg({"GEMINI_KEYS": "k1", "SDOC_VERIFY": "auto",
+                              "GOOGLE_CLIENT_ID": "id",
+                              "GOOGLE_CLIENT_SECRET": "secret"})
+        self.assertIsInstance(cfg.get("verifier"), _Stub)
+
+    def test_verifier_can_be_switched_off(self):
+        cfg = self._case_cfg({"GEMINI_KEYS": "k1", "SDOC_VERIFY": "off",
+                              "GOOGLE_CLIENT_ID": "id",
+                              "GOOGLE_CLIENT_SECRET": "secret"})
+        self.assertIsNone(cfg.get("verifier"))
+
+    def test_no_verifier_without_keys(self):
+        cfg = self._case_cfg({"GEMINI_KEYS": "", "GEMINI_KEY": "",
+                              "GOOGLE_CLIENT_ID": "id",
+                              "GOOGLE_CLIENT_SECRET": "secret"})
+        self.assertIsNone(cfg.get("verifier"))
 
 if __name__ == "__main__":
     unittest.main()

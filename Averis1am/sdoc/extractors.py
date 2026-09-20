@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from . import readers
 from .llm import llm_extractor
+from .schema import norm_label, similarity
 
 
 def _as_dict(cfg):
@@ -31,14 +32,63 @@ def _call_llm(extractor, data, att_path, problems=None):
         return extractor(data, att_path)
 
 
+def _resolve_sources(doc, data, att_path, cfg):
+    """Give LLM-extracted values the provenance the readers produce.
+
+    A model cannot be trusted to report page coordinates -- it produces
+    plausible wrong numbers. Instead it reports the snippet it read a value
+    from, and the snippet is located in the deterministic transcription, which
+    already carries page, line and box. The model does semantics; rules do
+    positioning (v2 §6.3, Addendum A4/A9).
+    """
+    from .docs import pair_label, pair_source, pair_value
+
+    transcription = deterministic_extract(data, att_path, cfg)
+    if not transcription:
+        return doc
+    rows = [(pair_source(p), norm_label(f"{pair_label(p)} {pair_value(p)}"))
+            for p in transcription[1] if pair_source(p)]
+    if not rows:
+        return doc
+
+    resolved = []
+    for pair in doc[1]:
+        label, value = pair_label(pair), pair_value(pair)
+        existing = pair_source(pair)
+        needle = norm_label(str(existing.get("source_snippet") or "") or
+                            f"{label} {value}")
+        source = None
+        if needle:
+            best, score = None, 0.0
+            for row_source, haystack in rows:
+                if not haystack:
+                    continue
+                hit = 1.0 if needle in haystack or haystack in needle else similarity(needle, haystack)
+                if hit > score:
+                    best, score = row_source, hit
+            if best and score >= 0.6:
+                source = {**best, **{k: v for k, v in existing.items()
+                                     if k == "source_snippet"}}
+        resolved.append({"label": label, "value": value,
+                         **({"source": source} if source else
+                            {"source": existing} if existing else {})})
+    return doc[0], resolved
+
+
 def llm_extract(data, att_path, cfg=None, problems=None):
     extractor = llm_extractor(cfg)
     if not extractor:
         return None
     try:
-        return _call_llm(extractor, data, att_path, problems)
+        doc = _call_llm(extractor, data, att_path, problems)
     except Exception:
         return None
+    if not doc:
+        return None
+    try:
+        return _resolve_sources(doc, data, att_path, cfg)
+    except Exception:
+        return doc          # evidence is a bonus; never lose the extraction
 
 
 def extract_document(data, att_path, cfg=None, problems=None):

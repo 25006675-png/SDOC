@@ -75,25 +75,39 @@ def extract_field_sources(pairs, label_map=None):
 
 
 
-def extract_bytes(data, att_path, cfg=None, problems=None):
+def _note(notes, att_path, exc):
+    """Record why a document could not be read.
+
+    A helper-process timeout and a corrupt file both end as 'unreadable';
+    without this the reviewer cannot tell which happened (Addendum A6/A10).
+    """
+    if notes is None:
+        return
+    notes.append({"document": att_path, "kind": type(exc).__name__,
+                  "error": str(exc)})
+
+
+def extract_bytes(data, att_path, cfg=None, problems=None, notes=None):
     """Single document extraction stage, optionally through a helper process."""
     cfg = cfg or {}
     pool = cfg.get("reader_pool") if isinstance(cfg, dict) else None
     if pool is not None:
         try:
             return pool.extract(data, att_path, cfg, problems=problems)
-        except Exception:
+        except Exception as exc:
+            _note(notes, att_path, exc)
             return None
     from .extractors import extract_document
     try:
         return extract_document(data, att_path, cfg, problems=problems)
     except ValueError:
         raise
-    except Exception:
+    except Exception as exc:
+        _note(notes, att_path, exc)
         return None
 
 
-def load_doc(source, att_path, cfg=None):
+def load_doc(source, att_path, cfg=None, notes=None):
     """Read an attachment -> (title, pairs) or None when unreadable.
 
     When the deterministic reader fails, a configured LLM extractor
@@ -102,11 +116,12 @@ def load_doc(source, att_path, cfg=None):
     """
     try:
         data = source.read_bytes(att_path)
-    except Exception:
+    except Exception as exc:
+        _note(notes, att_path, exc)
         return None
     if not data:
         return None
-    return extract_bytes(data, att_path, cfg)
+    return extract_bytes(data, att_path, cfg, notes=notes)
 
 
 def find_pair(attachments):
@@ -121,7 +136,7 @@ def find_pair(attachments):
     return si, bl
 
 
-def identify_pair(attachments, source, cfg=None):
+def identify_pair(attachments, source, cfg=None, notes=None):
     """Decide which attachments are the SI and the BL.
 
     Returns (si_path, bl_path, docs, problem) where docs maps path ->
@@ -131,7 +146,7 @@ def identify_pair(attachments, source, cfg=None):
     Filename suffixes win when present; otherwise documents are identified
     by content type so swapped or arbitrarily named files still work.
     """
-    docs = {a: load_doc(source, a, cfg) for a in attachments}
+    docs = {a: load_doc(source, a, cfg, notes=notes) for a in attachments}
 
     si_path, bl_path = find_pair(attachments)
     if si_path and bl_path:

@@ -56,7 +56,7 @@ class TestExtractorStage(unittest.TestCase):
             {"extractor": "llm", "llm_extractor": fake_llm},
         )
         self.assertEqual(doc[0], "LLM DOC")
-        self.assertEqual(doc[1][0][1], "LLM SHIPPER")
+        self.assertEqual(docs.pair_value(doc[1][0]), "LLM SHIPPER")
         self.assertEqual(len(calls), 1)
 
         doc2 = extract_document(

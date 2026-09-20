@@ -30,5 +30,37 @@ class TestReaderPool(unittest.TestCase):
         self.assertEqual(doc[0], "SHIPPING INSTRUCTION")
 
 
+
+class TestReaderFailureIsVisible(unittest.TestCase):
+    """A helper-process timeout must not look like a corrupt file (A6/A10)."""
+
+    class _Source:
+        def read_bytes(self, path):
+            return b"Shipper: ACME\nGross Wt (kgs): 1 KG\n"
+
+    def _run(self, **cfg_extra):
+        from sdoc.core import prepare_cfg, process_email
+        from sdoc.reader_pool import ReaderPool
+        pool = ReaderPool(workers=1, timeout=1)
+        try:
+            cfg = prepare_cfg({"reader_pool": pool, **cfg_extra})
+            email = {"email_id": "t1", "from": "x@y.z",
+                     "subject": "compare DOC-9", "body": "please compare",
+                     "attachments": ["a_SI.txt", "a_BL.txt"]}
+            return process_email(email, self._Source(), cfg)
+        finally:
+            pool.close()
+
+    def test_timeout_is_named_in_the_evidence(self):
+        _, evidence = self._run(_test_sleep_seconds=3)
+        failures = evidence.get("reader_failures") or []
+        self.assertTrue(failures, "timeout left no trace in the evidence")
+        self.assertEqual(failures[0]["kind"], "ReaderTimeoutError")
+        self.assertIn("timed out", failures[0]["error"])
+
+    def test_a_healthy_read_records_no_failures(self):
+        _, evidence = self._run()
+        self.assertNotIn("reader_failures", evidence)
+
 if __name__ == "__main__":
     unittest.main()

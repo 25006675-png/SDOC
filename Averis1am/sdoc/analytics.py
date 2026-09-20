@@ -68,6 +68,7 @@ def build_metrics(cases, routed, tasks, comparisons, case_email_count, now):
     verifier_disagreements = 0
     verifier_failures = 0
     verifier_successes = 0
+    extraction_statuses = Counter()
     for comparison in comparisons:
         defect_fields.update(_json(comparison.get("defect_fields"), []))
         evidence = _json(comparison.get("evidence_json", comparison.get("evidence")), {})
@@ -81,7 +82,17 @@ def build_metrics(cases, routed, tasks, comparisons, case_email_count, now):
                 verifier_successes += 1
             elif verification["status"] == "FAILED":
                 verifier_failures += 1
+        # Extraction status per document (v2 §7.3, §12.3 first-pass and
+        # recovery rate). Recorded since the validation stage landed, but
+        # nothing counted it until now.
+        validation = evidence.get("validation") if isinstance(evidence, dict) else None
+        if isinstance(validation, dict):
+            for side in ("si", "bl"):
+                status = (validation.get(side) or {}).get("status")
+                if status:
+                    extraction_statuses[status] += 1
 
+    extraction_reads = sum(extraction_statuses.values())
     rate = lambda count, base=total: round(count / base, 4) if base else 0.0
     return {
         "cases": total,
@@ -106,5 +117,10 @@ def build_metrics(cases, routed, tasks, comparisons, case_email_count, now):
         "verifier_disagreements": verifier_disagreements,
         "verifier_failures": verifier_failures,
         "verifier_agreement_rate": rate(verifier_successes - verifier_disagreements, verifier_successes),
+        "extraction_reads": extraction_reads,
+        "extraction_statuses": dict(extraction_statuses),
+        "first_pass_validated_rate": rate(
+            extraction_statuses["FIRST_PASS_VALIDATED"], extraction_reads),
+        "recovered_rate": rate(extraction_statuses["RECOVERED"], extraction_reads),
         "discrepancy_fields": dict(defect_fields.most_common()),
     }

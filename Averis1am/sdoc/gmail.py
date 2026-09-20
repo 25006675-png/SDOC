@@ -17,6 +17,7 @@ import truststore
 from .casework import CaseService
 from .budget import BudgetExceeded, SpendLedger
 from .classify import GeminiEmailClassifier
+from .verification import GeminiVerifier
 
 
 AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
@@ -308,6 +309,7 @@ class GmailSyncService:
         seen = set(state.get("seen_message_ids", []))
         processed = 0
         classifier = None
+        verifier = None
         ledger = self.ledger
         budget_stop = None
         try:
@@ -315,6 +317,11 @@ class GmailSyncService:
             has_keys = bool(os.environ.get("GEMINI_KEYS") or os.environ.get("GEMINI_KEY"))
             if setting not in {"0", "false", "no", "off"} and has_keys:
                 classifier = GeminiEmailClassifier()
+            # Pass 2 (v2 §7.5). Without this, live mail is compared on a single
+            # read while the demo import gets an independent second one.
+            verify_setting = os.environ.get("SDOC_VERIFY", "auto").lower()
+            if verify_setting not in {"0", "false", "no", "off"} and has_keys:
+                verifier = GeminiVerifier()
             case_cfg = {
                 "extractor": os.environ.get("SDOC_DOCUMENT_EXTRACTOR", "deterministic"),
                 "reader_isolation": os.environ.get("SDOC_READER_ISOLATION", "1").lower() not in {"0", "false", "no", "off"},
@@ -328,6 +335,8 @@ class GmailSyncService:
                 case_cfg["llm_model"] = os.environ.get("SDOC_LLM_MODEL", "gpt-4o-mini")
             if classifier:
                 case_cfg["ai_email_classifier"] = classifier
+            if verifier:
+                case_cfg["verifier"] = verifier
             with GmailSource(token, self.cfg.query, self.cfg.max_results, attachment_root=self.cfg.attachment_root) as source:
                 service = CaseService(self.store, case_cfg)
                 for email in source.emails():
@@ -355,6 +364,8 @@ class GmailSyncService:
         finally:
             if classifier:
                 classifier.close()
+            if verifier:
+                verifier.close()
         state.update({
             "last_sync_at": time.time(),
             "last_error": budget_stop,
