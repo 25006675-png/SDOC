@@ -478,3 +478,44 @@ main { min-width: 0; padding: 0 30px 34px; }
 }
 .policy-toggle { flex-direction: row !important; align-items: center; gap: 9px !important; }
 @media (max-width: 720px) { .member-table thead { display: none; } }
+
+/* Mailbox providers: one row each, several can be connected at once. */
+.provider-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.provider-row {
+  display: grid; align-items: center; gap: 14px;
+  grid-template-columns: 34px minmax(0, 1fr) auto auto;
+  padding: 12px 14px; border: 1px solid #dbe4df; border-radius: 10px;
+  background: white;
+}
+.provider-mark { width: 34px; height: 34px; display: grid; place-items: center; }
+.provider-mark svg { width: 26px; height: 26px; }
+.provider-text { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
+.provider-text strong { font-size: 14px; display: flex; align-items: center; gap: 8px; }
+.provider-text small { color: #62716a; font-size: 12px; overflow-wrap: anywhere; }
+.default-tag {
+  padding: 2px 7px; border-radius: 999px; background: #e7f0ea; color: #1e5940;
+  font-size: 10px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
+}
+.provider-state { font-size: 12px; font-weight: 700; white-space: nowrap; }
+.provider-state.is-connected { color: #1e7a4d; }
+.provider-state.is-ready { color: #a06a12; }
+.provider-state.is-off { color: #8a9891; }
+.provider-actions { display: flex; gap: 8px; }
+.provider-actions button { min-height: 34px; padding: 0 12px; font-size: 12px; }
+
+/* A refresh control that reads as a control. */
+.refresh-button {
+  display: inline-flex; align-items: center; gap: 7px; min-height: 36px;
+  padding: 0 14px; border: 1px solid #aac3b6; border-radius: 8px;
+  background: white; color: #1e5940; font-weight: 700; font-size: 13px;
+  cursor: pointer;
+}
+.refresh-button:hover { background: #dfece5; }
+.refresh-icon { font-size: 15px; line-height: 1; }
+.refresh-button.is-loading .refresh-icon { animation: spin .9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 760px) {
+  .provider-row { grid-template-columns: 34px minmax(0, 1fr); }
+  .provider-state, .provider-actions { grid-column: 2; }
+}

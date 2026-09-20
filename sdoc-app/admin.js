@@ -70,6 +70,107 @@
     });
   }
 
+
+  const PROVIDER_MARKS = {
+    gmail: '<svg viewBox="0 0 24 24" role="img" aria-label="Gmail"><rect x="1.5" y="4" width="21" height="16" rx="2.5" fill="#fff" stroke="#dadce0"/><path d="M2 6.2 12 13 22 6.2V18a2 2 0 0 1-2 2h-1.6V9.9L12 14.3 5.6 9.9V20H4a2 2 0 0 1-2-2Z" fill="#ea4335"/><path d="M2 6.2A2 2 0 0 1 4 4h.9L12 9 19.1 4h.9a2 2 0 0 1 2 2.2L12 13Z" fill="#c5221f"/></svg>',
+    outlook: '<svg viewBox="0 0 24 24" role="img" aria-label="Outlook"><rect x="9" y="4.5" width="13.5" height="15" rx="1.6" fill="#0f6cbd"/><path d="M11 9h9.5v2.2L15.8 14 11 11.2Z" fill="#fff" opacity=".85"/><rect x="1.5" y="6" width="11" height="12" rx="2.2" fill="#0a4f8f"/><ellipse cx="7" cy="12" rx="3.1" ry="3.6" fill="none" stroke="#fff" stroke-width="1.7"/></svg>'
+  };
+
+  function relativeTime(value) {
+    if (!value) return 'never synced';
+    const seconds = Math.max(0, (Date.now() / 1000) - Number(value));
+    if (seconds < 90) return 'synced just now';
+    if (seconds < 3600) return `synced ${Math.round(seconds / 60)} min ago`;
+    if (seconds < 86400) return `synced ${Math.round(seconds / 3600)} hr ago`;
+    return `synced ${Math.round(seconds / 86400)} days ago`;
+  }
+
+  function providerRow(mailbox) {
+    const row = document.createElement('li');
+    row.className = 'provider-row';
+
+    const mark = document.createElement('span');
+    mark.className = 'provider-mark';
+    mark.innerHTML = PROVIDER_MARKS[mailbox.provider] || '';
+
+    const text = document.createElement('div');
+    text.className = 'provider-text';
+    const name = document.createElement('strong');
+    name.textContent = mailbox.label;
+    if (mailbox.is_default) {
+      const tag = document.createElement('span');
+      tag.className = 'default-tag';
+      tag.textContent = 'Default';
+      name.append(tag);
+    }
+    const detail = document.createElement('small');
+    detail.textContent = mailbox.connected
+      ? `${mailbox.account || 'Connected'} · ${relativeTime(mailbox.last_sync_at)}`
+      : (mailbox.last_error || mailbox.next_action || 'Not connected');
+    text.append(name, detail);
+
+    const state = document.createElement('span');
+    const connected = Boolean(mailbox.connected);
+    state.className = `provider-state ${connected ? 'is-connected' : mailbox.configured ? 'is-ready' : 'is-off'}`;
+    state.textContent = connected ? 'Connected' : mailbox.configured ? 'Ready to connect' : 'Not configured';
+
+    const actions = document.createElement('div');
+    actions.className = 'provider-actions';
+    if (connected) {
+      const sync = document.createElement('button');
+      sync.type = 'button';
+      sync.className = 'primary-button';
+      sync.textContent = 'Sync now';
+      sync.addEventListener('click', () => syncProvider(mailbox.provider, sync));
+      actions.append(sync);
+    }
+    const connect = document.createElement('button');
+    connect.type = 'button';
+    connect.className = 'secondary-button';
+    connect.textContent = connected ? 'Reconnect' : 'Connect';
+    connect.disabled = !mailbox.configured;
+    connect.title = mailbox.configured ? '' : 'Set this provider\'s OAuth credentials first';
+    connect.addEventListener('click', () => {
+      window.location.href = `/api/mailbox/${mailbox.provider}/connect`;
+    });
+    actions.append(connect);
+
+    row.append(mark, text, state, actions);
+    return row;
+  }
+
+  async function syncProvider(provider, button) {
+    const label = button.textContent;
+    button.disabled = true;
+    button.textContent = 'Syncing…';
+    try {
+      const result = await api(`/api/mailbox/${provider}/sync`, { method: 'POST' });
+      setText('mailbox-note', `${provider}: ${result.processed_now || 0} new message(s) processed.`);
+    } catch (error) {
+      setText('mailbox-note', error.message);
+    } finally {
+      button.textContent = label;
+      button.disabled = false;
+      loadMailboxes();
+    }
+  }
+
+  async function loadMailboxes() {
+    const list = document.getElementById('provider-list');
+    if (!list) return;
+    try {
+      const data = await api('/api/mailboxes');
+      list.replaceChildren(...data.items.map(providerRow));
+      const live = data.items.filter(item => item.connected).length;
+      setText('mailbox-note', live
+        ? `${live} of ${data.items.length} mailboxes connected. Both providers can run at the same time.`
+        : 'No mailbox connected yet. Connect one to start live inbox analysis.');
+    } catch (error) {
+      list.replaceChildren();
+      setText('mailbox-note', error.message);
+    }
+  }
+
   function percent(value) { return `${Math.round((value || 0) * 100)}%`; }
   function duration(seconds) {
     if (seconds === null || seconds === undefined) return 'Not available';
@@ -102,44 +203,6 @@
     return Number.isNaN(date.getTime()) ? 'Time unavailable' : new Intl.DateTimeFormat(undefined, {
       month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
     }).format(date);
-  }
-
-  function renderMailbox(mailbox) {
-    const providerName = mailbox.provider === 'outlook' ? 'Outlook' : mailbox.provider === 'gmail' ? 'Gmail' : 'Mailbox';
-    const ready = mailbox.configured && mailbox.connected;
-    $('admin-mailbox-dot').classList.toggle('is-online', ready);
-    $('admin-mailbox-dot').classList.toggle('is-warning', mailbox.configured && !mailbox.connected);
-    setText('admin-mailbox-title', ready
-      ? `Mailbox connected${mailbox.account ? `: ${mailbox.account}` : ''}`
-      : mailbox.configured ? 'Mailbox ready to connect' : 'Mailbox needs OAuth settings');
-    setText('admin-mailbox-detail', mailbox.last_error || mailbox.next_action);
-    setText('admin-mailbox-query', mailbox.query ? `Query: ${mailbox.query}` : 'No query active');
-    setText('admin-mailbox-sync', mailbox.last_sync_at
-      ? `Last sync ${formatTime(mailbox.last_sync_at)}. ${mailbox.processed || 0} processed.`
-      : `${mailbox.processed || 0} processed. Not synced yet.`);
-    $('admin-mailbox-connect').disabled = !mailbox.configured;
-    $('admin-mailbox-sync-button').disabled = !ready;
-  }
-
-  async function loadMailbox() {
-    try {
-      renderMailbox(await api('/api/mailbox/status'));
-    } catch (error) {
-      setText('admin-mailbox-detail', error.message);
-    }
-  }
-
-  async function syncMailbox() {
-    const button = $('admin-mailbox-sync-button');
-    button.disabled = true; button.textContent = 'Syncing?';
-    try {
-      renderMailbox(await api('/api/mailbox/sync', { method: 'POST' }));
-      await load();
-    } catch (error) {
-      setText('admin-mailbox-detail', error.message);
-    } finally {
-      button.textContent = 'Sync now';
-    }
   }
 
   function renderBars(metrics) {
@@ -208,11 +271,10 @@
   }
 
   $('admin-refresh').addEventListener('click', load);
-  $('admin-mailbox-connect').addEventListener('click', () => { window.location.href = '/api/mailbox/connect'; });
-  $('admin-mailbox-sync-button').addEventListener('click', syncMailbox);
   loadIdentity();
+  $('mailbox-refresh').addEventListener('click', loadMailboxes);
   renderMembers();
   wireMemberDemo();
-  loadMailbox();
+  loadMailboxes();
   load();
 })();

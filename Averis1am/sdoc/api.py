@@ -26,7 +26,14 @@ from pydantic import BaseModel, Field
 from . import auth
 from .casework import CASE_STATES, CaseStore
 from .drafting import draft_case_message
-from .mailbox import create_mailbox_sync
+from .mailbox import (
+    PROVIDERS,
+    create_mailbox_registry,
+    create_mailbox_sync,
+    mailbox_provider,
+    normalise_provider,
+    provider_for_attachment,
+)
 from .supabase_store import SupabaseStore
 
 
@@ -126,7 +133,9 @@ def is_public_path(path):
 
 
 def required_role(path):
-    if path.startswith("/app/admin") or path in {"/api/metrics", "/api/mailbox/connect"}:
+    if (path.startswith("/app/admin")
+            or path in {"/api/metrics", "/api/mailbox/connect", "/api/mailboxes"}
+            or (path.startswith("/api/mailbox/") and path.endswith("/connect"))):
         return "admin"
     if path.startswith("/api/") or path.startswith("/app"):
         return "worker"
@@ -209,9 +218,13 @@ def resolve_attachment_path(source_path: str, mailbox_sync=None):
     if root not in candidate.parents and candidate != root:
         raise HTTPException(404, "attachment not found")
     if not candidate.is_file():
-        if source_path.startswith(("attachments/gmail/", "attachments/outlook/")) and mailbox_sync:
+        owner = provider_for_attachment(source_path)
+        service = mailbox_sync
+        if isinstance(mailbox_sync, dict):
+            service = mailbox_sync.get(owner)
+        if owner and service:
             try:
-                candidate = Path(mailbox_sync.fetch_attachment(source_path)).resolve()
+                candidate = Path(service.fetch_attachment(source_path)).resolve()
             except Exception:
                 raise HTTPException(404, "attachment not found")
         if not candidate.is_file():
@@ -225,7 +238,10 @@ def create_app(store=None, start_scheduler=True):
     @asynccontextmanager
     async def lifespan(app):
         app.state.store = store or create_store()
-        app.state.mailbox_sync = create_mailbox_sync(app.state.store)
+        app.state.mailboxes = create_mailbox_registry(app.state.store)
+        app.state.default_provider = mailbox_provider()
+        # Kept for the single-mailbox routes and attachment lookups.
+        app.state.mailbox_sync = app.state.mailboxes[app.state.default_provider]
         task = None
         mailbox_task = None
         if start_scheduler:
@@ -243,13 +259,14 @@ def create_app(store=None, start_scheduler=True):
             async def mailbox_loop():
                 while True:
                     await asyncio.sleep(max(30, mailbox_interval))
-                    status = app.state.mailbox_sync.status()
-                    if not status["configured"] or not status["connected"]:
-                        continue
-                    try:
-                        await asyncio.to_thread(app.state.mailbox_sync.sync_once)
-                    except Exception as exc:
-                        app.state.mailbox_sync.record_error(exc)
+                    for service in app.state.mailboxes.values():
+                        status = service.status()
+                        if not status["configured"] or not status["connected"]:
+                            continue
+                        try:
+                            await asyncio.to_thread(service.sync_once)
+                        except Exception as exc:
+                            service.record_error(exc)
 
             if mailbox_interval > 0:
                 mailbox_task = asyncio.create_task(mailbox_loop())
@@ -264,7 +281,8 @@ def create_app(store=None, start_scheduler=True):
                 mailbox_task.cancel()
                 with suppress(asyncio.CancelledError):
                     await mailbox_task
-            app.state.mailbox_sync.close()
+            for service in app.state.mailboxes.values():
+                service.close()
             if owns_store:
                 app.state.store.close()
 
@@ -384,7 +402,18 @@ def create_app(store=None, start_scheduler=True):
         if not code:
             raise HTTPException(400, "missing OAuth code")
         try:
-            app.state.mailbox_sync.finish_oauth(code, state)
+            finished = False
+            errors = []
+            for service in app.state.mailboxes.values():
+                try:
+                    service.finish_oauth(code, state)
+                    finished = True
+                    break
+                except ValueError as exc:
+                    # Not this provider's pending state; try the next one.
+                    errors.append(exc)
+            if not finished:
+                raise errors[0] if errors else ValueError("OAuth state did not match")
         except ValueError as exc:
             app.state.mailbox_sync.record_error(exc)
             return HTMLResponse(f"""
@@ -411,6 +440,50 @@ def create_app(store=None, start_scheduler=True):
         </body>
         </html>
         """
+
+    def mailbox_service(request: Request, provider: str):
+        key = normalise_provider(provider)
+        registry = getattr(request.app.state, "mailboxes", {})
+        if key is None or key not in registry:
+            raise HTTPException(404, f"unknown mailbox provider: {provider}")
+        return key, registry[key]
+
+    @app.get("/api/mailboxes")
+    def list_mailboxes(request: Request):
+        """Every supported provider with its own connection status."""
+        registry = getattr(request.app.state, "mailboxes", {})
+        items = []
+        for key, service in registry.items():
+            try:
+                status = service.status()
+            except Exception as exc:
+                status = {"provider": key, "configured": False, "connected": False,
+                          "last_error": str(exc), "next_action": "Provider unavailable."}
+            items.append({**status, "provider": key,
+                          "label": PROVIDERS[key]["label"],
+                          "is_default": key == getattr(request.app.state,
+                                                       "default_provider", None)})
+        return {"items": items,
+                "default": getattr(request.app.state, "default_provider", None)}
+
+    @app.get("/api/mailbox/{provider}/connect")
+    def mailbox_connect_provider(request: Request, provider: str):
+        _, service = mailbox_service(request, provider)
+        try:
+            return RedirectResponse(service.authorization_url(), status_code=302)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @app.post("/api/mailbox/{provider}/sync")
+    def mailbox_sync_provider(request: Request, provider: str):
+        _, service = mailbox_service(request, provider)
+        try:
+            return service.sync_once()
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        except Exception as exc:
+            service.record_error(exc)
+            raise HTTPException(502, f"Mailbox sync failed: {exc}") from exc
 
     @app.post("/api/mailbox/sync")
     def mailbox_sync():
@@ -441,7 +514,7 @@ def create_app(store=None, start_scheduler=True):
 
     @app.get("/api/attachments/preview")
     def attachment_preview(path: str = Query(min_length=1)):
-        file_path = resolve_attachment_path(path, app.state.mailbox_sync)
+        file_path = resolve_attachment_path(path, app.state.mailboxes)
         media_type = mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
         # Inline: a browser treats the default 'attachment' as a download, so an
         # iframe or preview tab would save the file instead of showing it.
@@ -463,7 +536,7 @@ def create_app(store=None, start_scheduler=True):
         zoom, so a box placed over it lands in the wrong place; a bare page
         raster makes the mapping from PDF points exact.
         """
-        file_path = resolve_attachment_path(path, app.state.mailbox_sync)
+        file_path = resolve_attachment_path(path, app.state.mailboxes)
         try:
             png, width, height = render_pdf_page(file_path, page, scale)
         except IndexError:
@@ -482,7 +555,7 @@ def create_app(store=None, start_scheduler=True):
 
     @app.get("/api/attachments/download")
     def attachment_download(path: str = Query(min_length=1)):
-        file_path = resolve_attachment_path(path, app.state.mailbox_sync)
+        file_path = resolve_attachment_path(path, app.state.mailboxes)
         media_type = mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
         return FileResponse(
             file_path,

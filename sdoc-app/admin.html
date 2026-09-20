@@ -41,26 +41,20 @@
           <h1>Operations analytics</h1>
           <p>Measured workflow health, quality signals, and human-review demand.</p>
         </div>
-        <button class="icon-button" id="admin-refresh" type="button" aria-label="Refresh analytics" title="Refresh analytics">&#8635;</button>
+        <button class="refresh-button" id="admin-refresh" type="button" title="Reload metrics from the case store"><span class="refresh-icon" aria-hidden="true">&#8635;</span>Refresh</button>
       </header>
 
 
-      <section class="mailbox-panel" aria-label="Shared mailbox administration">
-        <div class="mailbox-status">
-          <span class="mailbox-dot" id="admin-mailbox-dot"></span>
+      <section class="mailbox-panel" aria-label="Mailbox connections">
+        <header class="admin-section-head">
           <div>
-            <h2 id="admin-mailbox-title">Mailbox not connected</h2>
-            <p id="admin-mailbox-detail">Connect the shared operations mailbox once. Workers cannot change this connection.</p>
+            <h2>Connected mailboxes</h2>
+            <p>An administrator connects these once. Workers process the queue they create.</p>
           </div>
-        </div>
-        <div class="mailbox-meta">
-          <span id="admin-mailbox-query">No query active</span>
-          <span id="admin-mailbox-sync">Never synced</span>
-        </div>
-        <div class="mailbox-actions">
-          <button class="secondary-button" id="admin-mailbox-connect" type="button">Connect mailbox</button>
-          <button class="primary-button" id="admin-mailbox-sync-button" type="button">Sync now</button>
-        </div>
+          <button class="refresh-button" id="mailbox-refresh" type="button" title="Re-check mailbox connections"><span class="refresh-icon" aria-hidden="true">&#8635;</span>Re-check</button>
+        </header>
+        <ul class="provider-list" id="provider-list"></ul>
+        <p class="definition-note" id="mailbox-note">Checking mailbox connections…</p>
       </section>
 
       <section class="admin-summary" aria-label="Key operational metrics">
