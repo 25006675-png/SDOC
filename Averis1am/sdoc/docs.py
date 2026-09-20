@@ -2,7 +2,6 @@
 import re
 from pathlib import Path
 
-from . import readers
 from .schema import COMPARE_FIELDS, field_for_label, is_blank, norm_label
 
 # Titles that mean "this is NOT an SI/BL document" (EN + 中文 + FR).
@@ -74,6 +73,26 @@ def extract_field_sources(pairs, label_map=None):
     return sources
 
 
+
+
+def extract_bytes(data, att_path, cfg=None, problems=None):
+    """Single document extraction stage, optionally through a helper process."""
+    cfg = cfg or {}
+    pool = cfg.get("reader_pool") if isinstance(cfg, dict) else None
+    if pool is not None:
+        try:
+            return pool.extract(data, att_path, cfg, problems=problems)
+        except Exception:
+            return None
+    from .extractors import extract_document
+    try:
+        return extract_document(data, att_path, cfg, problems=problems)
+    except ValueError:
+        raise
+    except Exception:
+        return None
+
+
 def load_doc(source, att_path, cfg=None):
     """Read an attachment -> (title, pairs) or None when unreadable.
 
@@ -87,22 +106,7 @@ def load_doc(source, att_path, cfg=None):
         return None
     if not data:
         return None
-    reader = readers.reader_for(att_path)
-    doc = None
-    if reader is not None:
-        try:
-            doc = reader(data, cfg)
-        except Exception:
-            doc = None
-    if doc is None:
-        from .llm import llm_extractor
-        ex = llm_extractor(cfg)
-        if ex:
-            try:
-                doc = ex(data, att_path)
-            except Exception:
-                doc = None
-    return doc
+    return extract_bytes(data, att_path, cfg)
 
 
 def find_pair(attachments):

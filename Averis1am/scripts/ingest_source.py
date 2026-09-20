@@ -28,6 +28,13 @@ def main():
         default=os.environ.get("SDOC_BUNDLE_PATH", str(ROOT / "sdoc-hackathon-bundle")),
     )
     parser.add_argument("--ocr", action="store_true")
+    parser.add_argument("--extractor", choices=["deterministic", "llm"], default=os.environ.get("SDOC_DOCUMENT_EXTRACTOR", "deterministic"))
+    parser.add_argument("--llm-endpoint", default=os.environ.get("SDOC_LLM_ENDPOINT"))
+    parser.add_argument("--llm-model", default=os.environ.get("SDOC_LLM_MODEL", "gpt-4o-mini"))
+    parser.add_argument("--llm-key", default=os.environ.get("SDOC_LLM_KEY"))
+    parser.add_argument("--isolated-reader", action="store_true", default=os.environ.get("SDOC_READER_ISOLATION", "1").lower() not in {"0", "false", "no", "off"})
+    parser.add_argument("--reader-workers", type=int, default=int(os.environ.get("SDOC_READER_WORKERS", "2")))
+    parser.add_argument("--reader-timeout", type=float, default=float(os.environ.get("SDOC_READER_TIMEOUT", "8")))
     parser.add_argument("--verify", action="store_true")
     parser.add_argument("--limit", type=int)
     args = parser.parse_args()
@@ -46,9 +53,19 @@ def main():
                 (email.get("email_id") or email.get("id"))
                 for email in source.emails()[: args.limit]
             }
-        results = CaseService(
-            store, {"ocr": args.ocr, "verifier": verifier}
-        ).ingest_source(source, only=only)
+        cfg = {
+            "ocr": args.ocr,
+            "extractor": args.extractor,
+            "verifier": verifier,
+            "reader_isolation": args.isolated_reader,
+            "reader_workers": args.reader_workers,
+            "reader_timeout_seconds": args.reader_timeout,
+        }
+        if args.llm_endpoint:
+            cfg["llm_endpoint"] = args.llm_endpoint
+            cfg["llm_key"] = args.llm_key
+            cfg["llm_model"] = args.llm_model
+        results = CaseService(store, cfg).ingest_source(source, only=only)
         states = collections.Counter(
             result["case"]["state"] for result in results if result["case"]
         )

@@ -39,6 +39,51 @@ class TestOcrConfig(unittest.TestCase):
             docs.extract_field_sources(parsed[1])["shipper"]["page"], 1)
 
 
+
+
+class TestExtractorStage(unittest.TestCase):
+    def test_llm_extractor_can_be_primary_with_deterministic_fallback(self):
+        from sdoc.extractors import extract_document
+        calls = []
+
+        def fake_llm(data, filename, problems=None):
+            calls.append((filename, problems))
+            return ("LLM DOC", [("Shipper", "LLM SHIPPER")])
+
+        doc = extract_document(
+            b"SHIPPING INSTRUCTION\nShipper: RULE SHIPPER",
+            "sample.txt",
+            {"extractor": "llm", "llm_extractor": fake_llm},
+        )
+        self.assertEqual(doc[0], "LLM DOC")
+        self.assertEqual(doc[1][0][1], "LLM SHIPPER")
+        self.assertEqual(len(calls), 1)
+
+        doc2 = extract_document(
+            b"SHIPPING INSTRUCTION\nShipper: RULE SHIPPER",
+            "sample.txt",
+            {"extractor": "llm"},
+        )
+        self.assertEqual(doc2[0], "SHIPPING INSTRUCTION")
+        self.assertEqual(docs.extract_fields(doc2[1])["shipper"], "RULE SHIPPER")
+
+    def test_pdf_reader_returns_source_metadata_for_plain_label_rows(self):
+        from reportlab.pdfgen import canvas
+        import io
+        buffer = io.BytesIO()
+        pdf = canvas.Canvas(buffer)
+        pdf.drawString(72, 720, "SHIPPING INSTRUCTION")
+        pdf.drawString(72, 700, "Gross Weight: 18,500 KG")
+        pdf.save()
+        title, pairs = read_pdf(buffer.getvalue())
+        sources = docs.extract_field_sources(pairs)
+        self.assertEqual(title, "SHIPPING INSTRUCTION")
+        self.assertEqual(docs.extract_fields(pairs)["gross_weight_kg"], "18,500 KG")
+        self.assertEqual(sources["gross_weight_kg"]["page"], 1)
+        self.assertIn("bbox", sources["gross_weight_kg"])
+        self.assertIn("Gross Weight", sources["gross_weight_kg"]["source_text"])
+
+
 class TestLabels(unittest.TestCase):
     def f(self, lab):
         return schema.field_for_label(lab)

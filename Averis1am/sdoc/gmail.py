@@ -315,11 +315,21 @@ class GmailSyncService:
             has_keys = bool(os.environ.get("GEMINI_KEYS") or os.environ.get("GEMINI_KEY"))
             if setting not in {"0", "false", "no", "off"} and has_keys:
                 classifier = GeminiEmailClassifier()
+            case_cfg = {
+                "extractor": os.environ.get("SDOC_DOCUMENT_EXTRACTOR", "deterministic"),
+                "reader_isolation": os.environ.get("SDOC_READER_ISOLATION", "1").lower() not in {"0", "false", "no", "off"},
+                "reader_workers": int(os.environ.get("SDOC_READER_WORKERS", "2")),
+                "reader_timeout_seconds": float(os.environ.get("SDOC_READER_TIMEOUT", "8")),
+            }
+            endpoint = os.environ.get("SDOC_LLM_ENDPOINT")
+            if endpoint:
+                case_cfg["llm_endpoint"] = endpoint
+                case_cfg["llm_key"] = os.environ.get("SDOC_LLM_KEY")
+                case_cfg["llm_model"] = os.environ.get("SDOC_LLM_MODEL", "gpt-4o-mini")
+            if classifier:
+                case_cfg["ai_email_classifier"] = classifier
             with GmailSource(token, self.cfg.query, self.cfg.max_results, attachment_root=self.cfg.attachment_root) as source:
-                service = CaseService(
-                    self.store,
-                    {"ai_email_classifier": classifier} if classifier else None,
-                )
+                service = CaseService(self.store, case_cfg)
                 for email in source.emails():
                     message_id = email.get("gmail_message_id")
                     if message_id in seen:

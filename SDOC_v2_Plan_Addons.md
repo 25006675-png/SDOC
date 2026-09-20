@@ -156,10 +156,9 @@ surface** — counting pages requires opening the document:
 
 A gate that opens a hostile PDF to measure it is not a cheap gate.
 
-**Implemented as far as step 4.** Parsing runs in-process, not in a sandboxed
-child with a wall-clock timeout — that belongs with the deferred isolation
-control below. So the ordering reduces how often hostile bytes reach a parser;
-it does not contain a parser that misbehaves once they do.
+**Implemented.** Parsing now runs in a helper process with a wall-clock
+timeout (see A10), so the ordering reduces how often hostile bytes reach a
+parser *and* a parser that misbehaves is contained.
 
 ### Controls
 
@@ -174,7 +173,8 @@ it does not contain a parser that misbehaves once they do.
 | Per-sender rate limit + global daily ceiling | **Built** | Daily ceilings persist across restarts, so a restart does not reset an attacker's allowance. |
 | Queue and concurrency limits | Designed | One sender cannot occupy every worker. Not implemented. |
 | Malware scanning | **Deferred** | ClamAV directly. Genuinely important in production — logistics is a heavily phished sector — but not an MVP item per §14. |
-| Isolated container parsing, no egress | **Deferred** | Deployment requirement. Parsing currently runs in-process, so the gate reduces exposure rather than containing it. |
+| Helper-process parsing with a timeout | **Built** | Crash and freeze containment; see A10. |
+| Isolated container parsing, no egress | **Deferred** | Deployment requirement. A10 contains crashes and hangs, not an exploit — a compromised parser still runs as the service user. |
 | Per-organization configurable policy | **Deferred** | Follows tenancy work. |
 
 ### Normal and large-document lanes
@@ -275,6 +275,11 @@ Recorded so the architecture diagram is not mistaken for the running system.
 | Gmail live adapter | Built — P2 item, delivered early |
 | Source evidence | Built — page, box and snippet from PDFs; line and page from text and OCR |
 | **Document pre-processing / full-page coverage** | **Not built** — superseded by A1; the current path reads whole documents |
+| Stage-2 extractor selector (deterministic / LLM) | Built — see A9; deterministic stays the default |
+| **LLM semantic extraction with source evidence** | **Partly built** — the LLM stage runs but returns no evidence; see A9 |
+| Helper-process parsing with a timeout | Built — see A10 |
+| **Independent verifier on the live mail path** | **Not built** — the verifier is only wired into the ingest script, so Gmail mail gets no second read |
+| Extraction result cache | Not built — required before an LLM sweep of the 520-email set is repeatable |
 | Targeted retry with validation feedback | Built — failures are fed back, with OCR as the alternate route |
 | `FIRST-PASS VALIDATED` / `RECOVERED` statuses | Built — recorded per document with a retry trace |
 | **Correct Extraction** | Built — before/after kept, comparison re-run by the same rules |
@@ -306,6 +311,100 @@ The security gate is not allocated demo time. It is defensive and invisible
 when working, and v2 §13 prioritises reliability and operational flow over
 feature breadth. It should instead be evidenced by the regression suite and
 held ready for the question judges reliably ask.
+
+## A9. Three-stage extraction, with a swappable stage 2
+
+**Amends §6 and §7.1. Status: Built (stage selector) / Partly built (LLM stage).**
+
+v2's pipeline is three stages, and the implementation had collapsed the first
+two — the deterministic reader was transcribing *and* extracting fields by
+label matching, which is what §6.1 says not to do:
+
+```
+1. Transcription   deterministic reader | OCR/VLM   ->  text + coordinates
+2. Extraction      LLM                              ->  7 fields + evidence   (§7.1, Pass 1)
+3. Verification    LLM, independent re-read                                   (§7.5, Pass 2)
+```
+
+### The stage-2 selector
+
+Stage 2 is now configurable rather than forked into a second pipeline:
+
+| `cfg["extractor"]` | Behaviour |
+|---|---|
+| `deterministic` *(default)* | Label matching. No model calls. Falls back to the LLM if it fails. |
+| `llm` | Semantic extraction. Falls back to deterministic if the model fails or quota is exhausted. |
+
+Everything downstream — validation, recovery, comparison, verification,
+casework, evidence — is shared and single-implementation. This keeps §12.1
+satisfied: the organizer benchmark runs through **the same backend as the
+product**, with one stage swapped, rather than through a parallel pipeline
+that could drift.
+
+Applied per path:
+
+| Path | Stage 2 | Why |
+|---|---|---|
+| Organizer baseline | `deterministic` | Stays seconds and free, re-runnable after every change |
+| Advanced demo set | `llm` | Scans and unfamiliar layouts |
+| Live mail | `llm` when configured | Unknown layouts |
+
+Because both extractors plug into the same slot, the same 520 emails can be
+run through each to produce a measured per-field accuracy comparison (§12.3)
+rather than an asserted one. That sweep needs a result cache keyed on document
+hash, model and prompt version; **not yet built**, and required before the
+comparison is repeatable.
+
+### Known gap: the LLM stage drops source evidence
+
+Deterministic extraction returns each field with its `line`/`page`/`bbox` and
+snippet. The LLM stage returns bare label/value pairs, so **selecting
+`extractor='llm'` silently disables the source evidence of A4 and §6.3** — the
+evidence viewer falls back to "no snippet stored for this field".
+
+The fix is not to ask the model for coordinates, which produces plausible
+wrong numbers. The model should return `{value, source_snippet}` per field,
+and deterministic code should locate that snippet in the transcription to
+recover page, line and box — AI understands, rules verify.
+
+## A10. Helper-process document reading
+
+**New control under A3. Status: Built.**
+
+Document parsing runs in a reusable helper process with a per-document
+wall-clock timeout. On timeout the pool is terminated and rebuilt, and the
+document takes the existing unreadable path into human review.
+
+**Why a process and not a thread:** the parsers are C libraries — `pdfium`,
+`pillow`, `lxml`. A segfault or an out-of-memory kill there cannot be caught
+by `try/except`, and a hung parse cannot be killed on a thread. Before this,
+a single malformed attachment could wedge the Gmail sync loop permanently.
+
+**Why a persistent pool and not a process per document:** measured on Windows,
+where `spawn` re-imports everything per process.
+
+| Approach | Per document | 440 documents |
+|---|---:|---:|
+| In-process | 17 ms | ~1.3 s |
+| Fresh process each time | 268 ms | ~118 s |
+| Reused pooled worker | ~13 ms | ~6 s |
+
+A process per document would have made the §12.1 benchmark unrunnable.
+
+Configuration: `SDOC_READER_ISOLATION` (default on), `SDOC_READER_WORKERS`
+(2), `SDOC_READER_TIMEOUT` (8s). Config is stripped of callables and clients
+before crossing the process boundary, so verifier and extractor objects stay
+in the parent.
+
+**What this is not.** It contains crashes, hangs and runaway memory. It is not
+a security sandbox: a parser exploit still runs as the service user with its
+filesystem and network. Real containment remains the deferred control in A3.
+
+**Remaining gaps:** no memory ceiling — Windows has no `resource` module, and
+the Linux `RLIMIT_AS` path behind a platform check is not implemented. No
+`maxtasksperchild`, so a leaky parser accumulates across documents. And a
+timeout or crash is currently indistinguishable from a corrupt file in the
+evidence, which the A6 "be loud" principle argues against.
 
 ---
 

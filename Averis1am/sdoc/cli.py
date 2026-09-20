@@ -41,9 +41,17 @@ def main(argv=None):
     ap.add_argument("--config", help="JSON file extending labels/keywords/fields/tolerances")
     ap.add_argument("--workers", type=int, default=1,
                     help="parallel document parsing threads (default 1)")
+    ap.add_argument("--isolated-reader", action="store_true",
+                    help="read documents in reusable helper processes with a timeout")
+    ap.add_argument("--reader-workers", type=int, default=2,
+                    help="helper processes for --isolated-reader")
+    ap.add_argument("--reader-timeout", type=float, default=8,
+                    help="seconds before a helper read is abandoned and rebuilt")
     ap.add_argument("--db", help="append this run to a SQLite audit database")
+    ap.add_argument("--extractor", choices=["deterministic", "llm"], default="deterministic",
+                    help="document extraction stage: deterministic label matching or LLM primary")
     ap.add_argument("--llm-endpoint",
-                    help="OpenAI-compatible endpoint for unreadable docs "
+                    help="OpenAI-compatible endpoint for LLM document extraction "
                          "(e.g. http://localhost:11434 for Ollama)")
     ap.add_argument("--llm-model", default="gpt-4o-mini",
                     help="model name for --llm-endpoint")
@@ -53,15 +61,14 @@ def main(argv=None):
     ap.add_argument("-q", "--quiet", action="store_true")
     args = ap.parse_args(argv)
 
-    cfg = {"fuzzy": args.fuzzy, "ocr": args.ocr}
+    cfg = {"fuzzy": args.fuzzy, "ocr": args.ocr, "extractor": args.extractor, "reader_isolation": args.isolated_reader, "reader_workers": args.reader_workers, "reader_timeout_seconds": args.reader_timeout}
     if args.config:
         c = json.loads(open(args.config, encoding="utf-8").read())
         cfg.update(c)
     if args.llm_endpoint:
-        from .llm import openai_extractor
-        cfg["llm_extractor"] = openai_extractor(
-            args.llm_endpoint, api_key=args.llm_key or os.getenv("SDOC_LLM_KEY"),
-            model=args.llm_model)
+        cfg["llm_endpoint"] = args.llm_endpoint
+        cfg["llm_key"] = args.llm_key or os.getenv("SDOC_LLM_KEY")
+        cfg["llm_model"] = args.llm_model
 
     source = open_source(args.source)
     only = set(args.emails.split(",")) if args.emails else None

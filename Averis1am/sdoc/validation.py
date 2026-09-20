@@ -15,7 +15,7 @@ The statuses here describe the extraction, not the shipment case. Case state
 separately in casework, and the submission contract is unaffected.
 """
 from . import readers
-from .docs import extract_fields, load_doc
+from .docs import extract_bytes, extract_fields, load_doc
 from .schema import COMPARE_FIELDS, is_blank, norm_value
 
 FIRST_PASS_VALIDATED = "FIRST_PASS_VALIDATED"
@@ -64,21 +64,15 @@ def _alternate_read(source, att_path, cfg, problems):
         return None, None
 
     if str(att_path).lower().endswith(".pdf") and readers.ocr_available():
-        try:
-            doc = readers.read_pdf(data, {**_as_dict(cfg), "ocr": True,
-                                          "force_ocr": True})
-        except Exception:
-            doc = None
+        doc = extract_bytes(data, att_path, {**_as_dict(cfg), "ocr": True,
+                                             "force_ocr": True}, problems)
         if doc is not None:
             return doc, "ocr"
 
-    from .llm import llm_extractor
-    extractor = llm_extractor(cfg)
-    if extractor:
-        try:
-            doc = _call_extractor(extractor, data, att_path, problems)
-        except Exception:
-            doc = None
+    cfgd = _as_dict(cfg)
+    if cfgd.get("llm_extractor") or cfgd.get("llm_endpoint"):
+        llm_cfg = {**cfgd, "extractor": "llm"}
+        doc = extract_bytes(data, att_path, llm_cfg, problems)
         if doc is not None:
             return doc, "llm"
     return None, None

@@ -7,6 +7,7 @@ from .classify import classify_result
 from .compare import compare_documents
 from .docs import doc_kind, identify_pair
 from .preflight import screen_attachments
+from .reader_pool import ReaderPool
 from .schema import build_label_map, compare_fields, field_specs
 from .validation import read_with_recovery
 
@@ -156,14 +157,25 @@ def run(source, cfg=None, only=None, workers=1):
     results stay in deterministic email order regardless of worker count.
     """
     cfg = prepare_cfg(cfg)
-    emails = [e for e in source.emails()
-              if not only or (e.get("email_id") or e.get("id")) in only]
-    if workers and workers > 1:
-        with ThreadPoolExecutor(max_workers=workers) as pool:
-            results = list(pool.map(
-                lambda e: process_email(e, source, cfg), emails))
-    else:
-        results = [process_email(e, source, cfg) for e in emails]
+    reader_pool = None
+    if cfg.get("reader_isolation") and not cfg.get("reader_pool"):
+        reader_pool = ReaderPool(
+            workers=cfg.get("reader_workers", 2),
+            timeout=cfg.get("reader_timeout_seconds", 8),
+        )
+        cfg["reader_pool"] = reader_pool
+    try:
+        emails = [e for e in source.emails()
+                  if not only or (e.get("email_id") or e.get("id")) in only]
+        if workers and workers > 1:
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                results = list(pool.map(
+                    lambda e: process_email(e, source, cfg), emails))
+        else:
+            results = [process_email(e, source, cfg) for e in emails]
+    finally:
+        if reader_pool:
+            reader_pool.close()
 
     submission, records, evidence = {}, {}, {}
     for email, (rec, ev) in zip(emails, results):

@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -10,66 +10,154 @@
     h1 { margin: 0; font-size: 16px; } p { margin: 4px 0 0; color: #62716a; font-size: 13px; }
     .actions { display: flex; gap: 8px; align-items: center; }
     a, button { min-height: 32px; padding: 0 11px; border: 1px solid #aac3b6; border-radius: 6px; color: #1e5940; background: white; font-weight: 700; text-decoration: none; cursor: pointer; }
+    a:focus-visible, button:focus-visible { outline: 3px solid #176f55; outline-offset: 2px; }
+    button[aria-pressed="false"] { background: #eef2f0; color: #4c5b55; }
+    button:disabled { opacity: .55; cursor: not-allowed; }
     main { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 14px; padding: 14px; height: calc(100vh - 63px); box-sizing: border-box; }
-    .viewer { position: relative; background: #111; border-radius: 10px; overflow: hidden; }
-    iframe { width: 100%; height: 100%; border: 0; background: white; }
-    .overlay { position: absolute; border: 3px solid #ff8a00; background: rgba(255, 138, 0, .16); box-shadow: 0 0 0 9999px rgba(0,0,0,.08); pointer-events: none; display: none; }
+    .viewer { background: #55605c; border-radius: 10px; overflow: auto; padding: 14px; }
+    /* The wrapper shrinks to the rendered page, so a box sized as a share of
+       the wrapper is a share of the page itself, at any display width. */
+    .page-wrap { position: relative; margin: 0 auto; background: white; box-shadow: 0 2px 12px #0000002e; }
+    .page-wrap img { display: block; width: 100%; }
+    .overlay { position: absolute; border: 3px solid #ff8a00; background: rgba(255, 138, 0, .16); pointer-events: none; display: none; }
+    .viewer-note { margin: 0; padding: 26px; color: #eef4f1; font-size: 13px; line-height: 1.6; text-align: center; }
     aside { background: white; border: 1px solid #dbe4df; border-radius: 10px; padding: 16px; overflow: auto; }
     dl { margin: 0; display: grid; gap: 12px; } dt { color: #62716a; font-size: 12px; } dd { margin: 3px 0 0; font-size: 13px; overflow-wrap: anywhere; }
-    code { white-space: pre-wrap; }
-    @media (max-width: 850px) { main { grid-template-columns: 1fr; height: auto; } .viewer { height: 70vh; } }
+    @media (max-width: 850px) { main { grid-template-columns: 1fr; height: auto; } .viewer { max-height: 70vh; } }
   </style>
 </head>
 <body>
   <header>
-    <div><h1 id="title">Evidence preview</h1><p id="subtitle">Original file with dynamic overlay</p></div>
-    <div class="actions"><button id="toggle">Evidence overlay</button><a id="download">Download</a></div>
+    <div><h1 id="title">Evidence preview</h1><p id="subtitle">Original file with source overlay</p></div>
+    <div class="actions">
+      <button id="toggle" type="button" aria-pressed="true">Hide overlay</button>
+      <a id="open" target="_blank" rel="noreferrer">Open original</a>
+      <a id="download">Download</a>
+    </div>
   </header>
   <main>
-    <section class="viewer"><iframe id="frame"></iframe><div id="box" class="overlay"></div></section>
+    <section class="viewer" id="viewer" aria-label="Document page"></section>
     <aside><dl id="facts"></dl></aside>
   </main>
   <script>
     const params = new URLSearchParams(location.search);
     const path = params.get('path') || '';
-    const page = params.get('page') || '1';
+    const pageParam = params.get('page');
+    const page = pageParam || '1';
     const bbox = (params.get('bbox') || '').split(',').map(Number);
     const text = params.get('text') || '';
     const field = params.get('field') || 'Evidence';
     const side = params.get('side') || '';
-    const preview = `/api/attachments/preview?path=${encodeURIComponent(path)}#page=${encodeURIComponent(page)}`;
-    document.getElementById('frame').src = preview;
+    const where = params.get('where') || '';
+    const isPdf = /\.pdf$/i.test(path);
+    const hasBox = bbox.length === 4 && bbox.every(n => !Number.isNaN(n));
+
+    const viewer = document.getElementById('viewer');
+    const toggle = document.getElementById('toggle');
     document.getElementById('download').href = `/api/attachments/download?path=${encodeURIComponent(path)}`;
+    document.getElementById('open').href = `/api/attachments/preview?path=${encodeURIComponent(path)}`;
     document.getElementById('title').textContent = `${field}${side ? ' · ' + side : ''}`;
     document.getElementById('subtitle').textContent = path.split('/').pop() || 'Original document';
-    const pw = Number(params.get('pw')), ph = Number(params.get('ph'));
-    const line = params.get('line');
-    const hasBox = bbox.length === 4 && bbox.every(n => !Number.isNaN(n));
-    const canPlace = hasBox && pw > 0 && ph > 0;
-    const where = line ? `Page ${page}, line ${line}` : `Page ${page}`;
-    const facts = [
-      ['Document', path],
-      ['Location', where],
-      ['Source text', text || 'No source snippet stored for this field.'],
-      ['Bounding box', hasBox ? `[${bbox.join(', ')}] pt` : 'Not available for this document type'],
-      ['Overlay', canPlace ? 'Approximate — placed from PDF point coordinates' : 'Unavailable; open the page and use the source text'],
-    ];
-    document.getElementById('facts').replaceChildren(...facts.map(([k,v]) => { const wrap=document.createElement('div'); const dt=document.createElement('dt'); const dd=document.createElement('dd'); dt.textContent=k; dd.textContent=v; wrap.append(dt,dd); return wrap; }));
+
+    let box = null;
     let visible = true;
-    function draw() {
-      const box = document.getElementById('box');
-      if (!visible || !canPlace) { box.style.display='none'; return; }
-      // bbox is [x0, top, x1, bottom] in PDF points, top-left origin. Express
-      // it as a share of the page so it lands correctly at any render scale.
-      const pct = n => `${Math.max(0, Math.min(100, n * 100))}%`;
-      box.style.display='block';
-      box.style.left   = pct(bbox[0] / pw);
-      box.style.top    = pct(bbox[1] / ph);
-      box.style.width  = pct((bbox[2] - bbox[0]) / pw);
-      box.style.height = pct((bbox[3] - bbox[1]) / ph);
+
+    function note(message) {
+      const paragraph = document.createElement('p');
+      paragraph.className = 'viewer-note';
+      paragraph.textContent = message;
+      viewer.replaceChildren(paragraph);
     }
-    document.getElementById('toggle').addEventListener('click', () => { visible = !visible; draw(); });
-    draw();
+
+    function draw(pageWidth, pageHeight) {
+      if (!box) return;
+      if (!visible) { box.style.display = 'none'; return; }
+      // bbox is [x0, top, x1, bottom] in PDF points with a top-left origin --
+      // the same space the page image was rendered from, so the share of the
+      // page is exact rather than approximate.
+      const pct = n => `${Math.max(0, Math.min(100, n * 100))}%`;
+      box.style.display = 'block';
+      box.style.left = pct(bbox[0] / pageWidth);
+      box.style.top = pct(bbox[1] / pageHeight);
+      box.style.width = pct((bbox[2] - bbox[0]) / pageWidth);
+      box.style.height = pct((bbox[3] - bbox[1]) / pageHeight);
+    }
+
+    function renderFacts(overlayState) {
+      const rows = [
+        ['Document', path],
+        ['Location', where || (pageParam ? `Page ${page}` : 'Not recorded for this document type')],
+        ['Source text', text || 'No source snippet stored for this field.'],
+        ['Bounding box', hasBox ? `[${bbox.join(', ')}] pt` : 'Not available for this document type'],
+        ['Overlay', overlayState],
+      ];
+      document.getElementById('facts').replaceChildren(...rows.map(([key, value]) => {
+        const wrap = document.createElement('div');
+        const dt = document.createElement('dt');
+        const dd = document.createElement('dd');
+        dt.textContent = key;
+        dd.textContent = value;
+        wrap.append(dt, dd);
+        return wrap;
+      }));
+    }
+
+    function unavailable(message, overlayState) {
+      note(message);
+      renderFacts(overlayState);
+      toggle.disabled = true;
+    }
+
+    async function load() {
+      if (!isPdf) {
+        unavailable(
+          'This document is not a PDF, so its page cannot be shown here. Use the source text on the right, or open the original.',
+          'Unavailable for this document type');
+        return;
+      }
+      note('Loading page…');
+      let response;
+      try {
+        response = await fetch(`/api/attachments/page?path=${encodeURIComponent(path)}&page=${encodeURIComponent(page)}`);
+      } catch (error) {
+        response = null;
+      }
+      if (!response || !response.ok) {
+        unavailable(
+          'The page image could not be rendered. Open the original document and use the source text on the right.',
+          'Unavailable; the page could not be rendered');
+        return;
+      }
+      const pageWidth = Number(response.headers.get('X-Page-Width'));
+      const pageHeight = Number(response.headers.get('X-Page-Height'));
+      const image = document.createElement('img');
+      image.src = URL.createObjectURL(await response.blob());
+      image.alt = `Page ${page} of ${path.split('/').pop() || 'the document'}`;
+      const wrap = document.createElement('div');
+      wrap.className = 'page-wrap';
+      wrap.append(image);
+      const canPlace = hasBox && pageWidth > 0 && pageHeight > 0;
+      if (canPlace) {
+        box = document.createElement('div');
+        box.className = 'overlay';
+        wrap.append(box);
+      } else {
+        toggle.disabled = true;
+      }
+      viewer.replaceChildren(wrap);
+      draw(pageWidth, pageHeight);
+      renderFacts(canPlace
+        ? 'Placed from the stored bounding box on the rendered page'
+        : 'No bounding box stored for this field');
+      toggle.addEventListener('click', () => {
+        visible = !visible;
+        toggle.textContent = visible ? 'Hide overlay' : 'Show overlay';
+        toggle.setAttribute('aria-pressed', String(visible));
+        draw(pageWidth, pageHeight);
+      });
+    }
+
+    load();
   </script>
 </body>
 </html>

@@ -140,19 +140,23 @@ def _row_source(rchars, text):
 
 
 def _pairs_from_pdf_chars(chars):
-    """Rows clustered by vertical overlap; each row split by font — labels are
-    bold, values regular. Robust to labels overlapping the value column and
-    to odd font metrics (CJK) that break geometric column splitting."""
-    chars.sort(key=lambda c: (c["top"], c["x0"]))
+    """Rows clustered by page/vertical overlap, with optional source boxes.
+
+    Supports both generated forms used in the bundle: bold-label/regular-value
+    rows and plain ``Label: value`` rows. The returned pairs stay compatible
+    with tuple consumers through docs.pair_label/pair_value/pair_source.
+    """
+    chars.sort(key=lambda c: (c.get("page_number", 1), c["top"], c["x0"]))
     rows = []
     for c in chars:
-        if rows and c["top"] <= rows[-1][1] + 1.5:
+        page = c.get("page_number", 1)
+        if rows and rows[-1][2] == page and c["top"] <= rows[-1][1] + 1.5:
             rows[-1][0].append(c)
             rows[-1][1] = max(rows[-1][1], c["bottom"])
         else:
-            rows.append([[c], c["bottom"]])
+            rows.append([[c], c["bottom"], page])
     lines = []
-    for rchars, _ in rows:
+    for rchars, _, _ in rows:
         rchars.sort(key=lambda c: c["x0"])
         bold = _join_chars([c for c in rchars if "bold" in c["fontname"].lower()])
         reg = _join_chars([c for c in rchars if "bold" not in c["fontname"].lower()])
@@ -166,8 +170,10 @@ def _pairs_from_pdf_chars(chars):
                                _row_source(rchars, full)))
         elif bold and reg:                       # bold label col + regular value
             pairs.append(_pair(bold, reg, _row_source(rchars, full)))
+        elif ":" in full:                         # non-bold "Label: value"
+            lab, val = full.split(":", 1)
+            pairs.append(_pair(lab.strip(), val.strip(), _row_source(rchars, full)))
     return title, pairs
-
 
 def read_pdf(data, cfg=None):
     import pdfplumber

@@ -160,10 +160,15 @@ class SupabaseStore:
                 params={**common, "select": "*", "order": "comparison_id.asc"},
             ) or []
         ]
-        case["corrections"] = self._request(
-            "GET", "/field_corrections",
-            params={**common, "select": "*", "order": "correction_id.asc"},
-        ) or []
+        try:
+            case["corrections"] = self._request(
+                "GET", "/field_corrections",
+                params={**common, "select": "*", "order": "correction_id.asc"},
+            ) or []
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code != 404:
+                raise
+            case["corrections"] = []
         case["audit_events"] = self._request(
             "GET", "/audit_events", params={**common, "select": "*", "order": "event_id.asc"}
         ) or []

@@ -30,8 +30,22 @@ def register_llm_extractor(fn):
 
 
 def llm_extractor(cfg=None):
-    """The configured extractor: per-run cfg wins over the global hook."""
-    return (cfg or {}).get("llm_extractor") or _EXTRACTOR
+    """The configured extractor: per-run cfg wins over the global hook.
+
+    Plain endpoint settings are supported so helper processes do not need to
+    receive a Python callable.
+    """
+    cfg = cfg or {}
+    if cfg.get("llm_extractor"):
+        return cfg["llm_extractor"]
+    if cfg.get("llm_endpoint"):
+        return openai_extractor(
+            cfg["llm_endpoint"],
+            api_key=cfg.get("llm_key"),
+            model=cfg.get("llm_model", "gpt-4o-mini"),
+            timeout=cfg.get("llm_timeout", 60),
+        )
+    return _EXTRACTOR
 
 
 def _decode_best_effort(data):

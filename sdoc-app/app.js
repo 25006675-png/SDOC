@@ -161,7 +161,17 @@
     }
   }
 
-  async function loadWorkspace({ preserveSelection = true } = {}) {
+  function detailIsBusy() {
+    // A background refresh replaces the whole detail panel, which would throw
+    // away a half-typed correction or review note. Visible, editable, non-empty
+    // fields (or the caret being in there) mean someone is mid-task.
+    const detail = $('case-detail');
+    if (detail.contains(document.activeElement)) return true;
+    return Array.from(detail.querySelectorAll('input, textarea')).some(
+      field => !field.readOnly && field.offsetParent !== null && field.value.trim() !== '');
+  }
+
+  async function loadWorkspace({ preserveSelection = true, background = false } = {}) {
     $('refresh-button').classList.add('is-loading');
     try {
       const [health, metrics, cases] = await Promise.all([
@@ -180,10 +190,13 @@
         return;
       }
       applyFilters();
-      if (preserveSelection && state.selectedId && state.cases.some(c => c.case_id === state.selectedId)) {
-        await openCase(state.selectedId);
+      const keepSelection = preserveSelection && state.selectedId
+        && state.cases.some(item => item.case_id === state.selectedId);
+      if (background && keepSelection && detailIsBusy()) return;
+      if (keepSelection) {
+        await openCase(state.selectedId, { quiet: background });
       } else if (state.filtered.length) {
-        await openCase(state.filtered[0].case_id);
+        await openCase(state.filtered[0].case_id, { quiet: background });
       }
     } catch (error) {
       setConnection(false, '');
@@ -281,18 +294,32 @@
     return 'Attachment';
   }
 
+  function fieldLabel(field) {
+    return FIELD_LABELS[field] || stateLabel(field);
+  }
+
+  function sourceLocation(source) {
+    // Only what the reader actually recorded: a PDF row knows its page, a
+    // docx row knows its table, and neither should be stated as the other.
+    if (!source) return '';
+    if (source.page && source.line) return `Page ${source.page}, line ${source.line}`;
+    if (source.page) return `Page ${source.page}`;
+    if (source.line) return `Line ${source.line}`;
+    if (source.table && source.row) return `Table ${source.table}, row ${source.row}`;
+    if (source.sheet && source.row) return `Sheet ${source.sheet}, row ${source.row}`;
+    if (source.row) return `Row ${source.row}`;
+    return '';
+  }
+
   function evidenceViewerUrl(field, side, source, fallbackPath) {
     const path = source?.document || fallbackPath;
     if (!path) return '';
-    const params = new URLSearchParams({ path, field: FIELD_LABELS[field] || field, side });
+    const params = new URLSearchParams({ path, field: fieldLabel(field), side });
     if (source?.page) params.set('page', source.page);
     if (source?.bbox) params.set('bbox', source.bbox.join(','));
     if (source?.source_text) params.set('text', source.source_text);
-    if (source?.page_width && source?.page_height) {
-      params.set('pw', source.page_width);
-      params.set('ph', source.page_height);
-    }
-    if (source?.line) params.set('line', source.line);
+    const where = sourceLocation(source);
+    if (where) params.set('where', where);
     return `/app/evidence.html?${params.toString()}`;
   }
 
@@ -327,7 +354,7 @@
       );
       const actions = element('div', 'attachment-actions');
       const preview = element('a', 'secondary-link compact-link', 'Preview');
-      preview.href = attachmentUrl('preview', path);
+      preview.href = `/app/evidence.html?${new URLSearchParams({ path }).toString()}`;
       preview.target = '_blank';
       preview.rel = 'noreferrer';
       const download = element('a', 'secondary-link compact-link', 'Download');
@@ -341,11 +368,12 @@
     return box;
   }
 
-  async function openCase(caseId) {
+  async function openCase(caseId, { quiet = false } = {}) {
+    const sameCase = quiet && state.selectedId === caseId;
     state.selectedId = caseId;
     renderCases();
     const detail = $('case-detail');
-    detail.replaceChildren($('loading-template').content.cloneNode(true));
+    if (!sameCase) detail.replaceChildren($('loading-template').content.cloneNode(true));
     try {
       renderDetail(await api(`/api/cases/${encodeURIComponent(caseId)}`));
     } catch (error) {
@@ -423,6 +451,24 @@
     return section;
   }
 
+  function comparedFields(fields) {
+    // COMPARE_FIELDS + config extras: keep the known order, then anything a
+    // deployment added, so a discrepancy can never be invisible here.
+    return FIELD_ORDER.concat(Object.keys(fields).filter(f => !FIELD_ORDER.includes(f)));
+  }
+
+  function matchNote(evidence) {
+    // 'Match' on two visibly different values needs a reason, or it reads as
+    // a bug: the backend matched within tolerance or above the fuzzy cutoff.
+    if (evidence.match !== true) return '';
+    if (evidence.within_tolerance) return 'Within tolerance';
+    if (evidence.si_norm !== evidence.bl_norm) {
+      const sim = typeof evidence.sim === 'number' ? ` · ${Math.round(evidence.sim * 100)}% similar` : '';
+      return `Near match${sim}`;
+    }
+    return '';
+  }
+
   function correctionRow(caseId, field, evidence) {
     const row = element('tr', 'correction-row');
     row.hidden = true;
@@ -481,7 +527,7 @@
         FIELD_ORDER.forEach(field => {
           const row = element('tr');
           row.append(
-            element('td', '', FIELD_LABELS[field]),
+            element('td', '', fieldLabel(field)),
             element('td', 'result-word', 'Match')
           );
           tbody.append(row);
@@ -500,7 +546,8 @@
       return section;
     }
     if (caseState === 'VERIFIED') {
-      section.append(element('p', 'comparison-summary is-ok', 'All 7 required fields match.'));
+      const count = comparedFields(comparison.evidence.fields).length;
+      section.append(element('p', 'comparison-summary is-ok', `All ${count} required fields match.`));
     }
     const table = element('table');
     const thead = element('thead');
@@ -508,10 +555,12 @@
     ['Field', 'Shipping instruction', 'Draft bill of lading', 'Result', 'Source evidence'].forEach(label => header.append(element('th', '', label)));
     thead.append(header);
     const tbody = element('tbody');
-    FIELD_ORDER.forEach(field => {
+    comparedFields(comparison.evidence.fields).forEach(field => {
       const evidence = comparison.evidence.fields[field] || {};
       const row = element('tr', evidence.match === false ? 'is-different' : '');
       const result = element('td', 'result-word', evidence.match === true ? 'Match' : evidence.match === false ? 'Different' : 'Review');
+      const note = matchNote(evidence);
+      if (note) result.append(element('span', 'match-note', note));
       if (evidence.corrected) {
         result.append(element('span', 'corrected-tag', `Corrected from ${evidence.corrected.from || 'blank'}`));
       }
@@ -519,9 +568,10 @@
       actions.append(evidenceActions(field, evidence, comparison.evidence));
       const correct = element('button', 'link-button', 'Correct');
       correct.type = 'button';
+      correct.setAttribute('aria-expanded', 'false');
       actions.append(correct);
       row.append(
-        element('td', '', FIELD_LABELS[field]),
+        element('td', '', fieldLabel(field)),
         element('td', '', evidence.si ?? 'Unavailable'),
         element('td', '', evidence.bl ?? 'Unavailable'),
         result,
@@ -530,7 +580,10 @@
       tbody.append(row);
       const editor = correctionRow(caseId, field, evidence);
       tbody.append(editor);
-      correct.addEventListener('click', () => { editor.hidden = !editor.hidden; });
+      correct.addEventListener('click', () => {
+        editor.hidden = !editor.hidden;
+        correct.setAttribute('aria-expanded', String(!editor.hidden));
+      });
     });
     table.append(thead, tbody);
     section.append(table);
@@ -651,6 +704,7 @@
     $('queue-title').textContent = 'Routed mail';
     $('queue-description').textContent = 'Classified outside document comparison.';
     $('state-filter').hidden = true;
+    $('search-input').disabled = true;
     try {
       const data = await api('/api/routed-messages');
       const items = data.items || [];
@@ -722,6 +776,7 @@
       return;
     }
     $('state-filter').hidden = false;
+    $('search-input').disabled = false;
     $('queue-title').textContent = state.view === 'all' ? 'All cases' : 'Action queue';
     $('queue-description').textContent = state.view === 'all' ? 'Every shipment case.' : 'Cases requiring a person.';
     $('state-filter').value = state.view === 'all' ? 'ALL' : 'ACTION';
@@ -729,14 +784,18 @@
   }));
 
   $('state-filter').addEventListener('change', applyFilters);
-  $('search-input').addEventListener('input', event => { state.search = event.target.value.trim(); applyFilters(); });
+  $('search-input').addEventListener('input', event => {
+    state.search = event.target.value.trim();
+    if (state.view === 'routed') return;
+    applyFilters();
+  });
   $('refresh-button').addEventListener('click', () => loadWorkspace());
   $('mailbox-connect').addEventListener('click', () => { window.location.href = '/api/mailbox/connect'; });
   $('mailbox-sync-button').addEventListener('click', syncMailbox);
   setInterval(async () => {
     await loadMailbox();
     await loadRoutedPreview();
-    if (state.mailbox?.connected) await loadWorkspace({ preserveSelection: true });
+    if (state.mailbox?.connected) await loadWorkspace({ preserveSelection: true, background: true });
   }, 30000);
   loadMailbox();
   loadRoutedPreview();
