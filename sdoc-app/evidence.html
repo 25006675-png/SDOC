@@ -42,14 +42,31 @@
     document.getElementById('download').href = `/api/attachments/download?path=${encodeURIComponent(path)}`;
     document.getElementById('title').textContent = `${field}${side ? ' · ' + side : ''}`;
     document.getElementById('subtitle').textContent = path.split('/').pop() || 'Original document';
-    const facts = [['Document', path], ['Page', page], ['Source text', text || 'No source snippet stored yet.'], ['Bounding box', bbox.length === 4 && bbox.every(n => !Number.isNaN(n)) ? `[${bbox.join(', ')}]` : 'No box stored yet']];
+    const pw = Number(params.get('pw')), ph = Number(params.get('ph'));
+    const line = params.get('line');
+    const hasBox = bbox.length === 4 && bbox.every(n => !Number.isNaN(n));
+    const canPlace = hasBox && pw > 0 && ph > 0;
+    const where = line ? `Page ${page}, line ${line}` : `Page ${page}`;
+    const facts = [
+      ['Document', path],
+      ['Location', where],
+      ['Source text', text || 'No source snippet stored for this field.'],
+      ['Bounding box', hasBox ? `[${bbox.join(', ')}] pt` : 'Not available for this document type'],
+      ['Overlay', canPlace ? 'Approximate — placed from PDF point coordinates' : 'Unavailable; open the page and use the source text'],
+    ];
     document.getElementById('facts').replaceChildren(...facts.map(([k,v]) => { const wrap=document.createElement('div'); const dt=document.createElement('dt'); const dd=document.createElement('dd'); dt.textContent=k; dd.textContent=v; wrap.append(dt,dd); return wrap; }));
     let visible = true;
     function draw() {
       const box = document.getElementById('box');
-      if (!visible || bbox.length !== 4 || bbox.some(n => Number.isNaN(n))) { box.style.display='none'; return; }
+      if (!visible || !canPlace) { box.style.display='none'; return; }
+      // bbox is [x0, top, x1, bottom] in PDF points, top-left origin. Express
+      // it as a share of the page so it lands correctly at any render scale.
+      const pct = n => `${Math.max(0, Math.min(100, n * 100))}%`;
       box.style.display='block';
-      box.style.left='18%'; box.style.top='24%'; box.style.width='42%'; box.style.height='10%';
+      box.style.left   = pct(bbox[0] / pw);
+      box.style.top    = pct(bbox[1] / ph);
+      box.style.width  = pct((bbox[2] - bbox[0]) / pw);
+      box.style.height = pct((bbox[3] - bbox[1]) / ph);
     }
     document.getElementById('toggle').addEventListener('click', () => { visible = !visible; draw(); });
     draw();

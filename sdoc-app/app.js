@@ -288,6 +288,11 @@
     if (source?.page) params.set('page', source.page);
     if (source?.bbox) params.set('bbox', source.bbox.join(','));
     if (source?.source_text) params.set('text', source.source_text);
+    if (source?.page_width && source?.page_height) {
+      params.set('pw', source.page_width);
+      params.set('ph', source.page_height);
+    }
+    if (source?.line) params.set('line', source.line);
     return `/app/evidence.html?${params.toString()}`;
   }
 

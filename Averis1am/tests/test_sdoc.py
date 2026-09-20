@@ -34,7 +34,9 @@ class TestOcrConfig(unittest.TestCase):
              patch("sdoc.readers._ocr_pdf", return_value="SHIPPING INSTRUCTION\nShipper: ACME"):
             parsed = read_pdf(b"image-only-pdf", {"ocr": True})
         self.assertEqual(parsed[0], "SHIPPING INSTRUCTION")
-        self.assertIn(("Shipper", "ACME"), parsed[1])
+        self.assertEqual(docs.extract_fields(parsed[1])["shipper"], "ACME")
+        self.assertEqual(
+            docs.extract_field_sources(parsed[1])["shipper"]["page"], 1)
 
 
 class TestLabels(unittest.TestCase):

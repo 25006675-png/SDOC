@@ -30,12 +30,12 @@ def ocr_available():
 
 
 def _ocr_pdf(data):
+    """-> one text block per page, so extracted values keep a page number."""
     import pypdfium2 as pdfium
     import pytesseract
     pdf = pdfium.PdfDocument(data)
-    return "\n".join(
-        pytesseract.image_to_string(page.render(scale=2).to_pil())
-        for page in pdf)
+    return [pytesseract.image_to_string(page.render(scale=2).to_pil())
+            for page in pdf]
 
 
 def _ocr_image(data):
@@ -44,15 +44,35 @@ def _ocr_image(data):
     return pytesseract.image_to_string(Image.open(io.BytesIO(data)))
 
 
-def _pairs_from_ocr(text):
-    """Parse OCR'd plain text like a .txt document."""
-    if not text or not text.strip():
+def _pairs_from_ocr(pages):
+    """Parse OCR'd page texts like a .txt document, keeping page numbers."""
+    pages = [pages] if isinstance(pages, str) else list(pages or [])
+    title, pairs = "", []
+    for page_no, text in enumerate(pages, start=1):
+        if not text or not text.strip():
+            continue
+        page_title, page_pairs = _txt_pairs(text.splitlines(), page=page_no)
+        title = title or page_title
+        pairs.extend(page_pairs)
+    if not title and not pairs:
         return None
-    return _txt_pairs(text.splitlines())
+    return title, pairs
 
 
 # ---------------------------------------------------------------------------
-def _txt_pairs(lines):
+def _pair(label, value, source=None):
+    """A label/value pair carrying optional source evidence.
+
+    Consumers read pairs through docs.pair_label/pair_value/pair_source, which
+    still accept plain (label, value) tuples from third-party readers.
+    """
+    pair = {"label": label, "value": value}
+    if source:
+        pair["source"] = source
+    return pair
+
+
+def _txt_pairs(lines, page=None):
     title = ""
     for l in lines:
         s = l.strip()
@@ -60,12 +80,15 @@ def _txt_pairs(lines):
             title = s
             break
     pairs = []
-    for l in lines:
+    for idx, l in enumerate(lines, start=1):
         if not l.strip() or l[0] in " \t":      # indented lines are continuations
             continue
         if ":" in l:
             lab, val = l.split(":", 1)
-            pairs.append((lab.strip(), val.strip()))
+            source = {"line": idx, "source_text": l.strip()}
+            if page:
+                source["page"] = page
+            pairs.append(_pair(lab.strip(), val.strip(), source))
     return title, pairs
 
 
@@ -94,6 +117,28 @@ def _join_chars(cs):
     return out
 
 
+def _row_source(rchars, text):
+    """Page, bounding box and snippet for one clustered row of pdf chars.
+
+    Coordinates are PDF points with a top-left origin (pdfplumber's 'top'), and
+    page dimensions travel with them so a viewer can place the box without
+    knowing the document.
+    """
+    first = rchars[0]
+    source = {
+        "page": first.get("page_number") or 1,
+        "bbox": [round(min(c["x0"] for c in rchars), 2),
+                 round(min(c["top"] for c in rchars), 2),
+                 round(max(c["x1"] for c in rchars), 2),
+                 round(max(c["bottom"] for c in rchars), 2)],
+        "source_text": text,
+    }
+    if first.get("page_width") and first.get("page_height"):
+        source["page_width"] = round(first["page_width"], 2)
+        source["page_height"] = round(first["page_height"], 2)
+    return source
+
+
 def _pairs_from_pdf_chars(chars):
     """Rows clustered by vertical overlap; each row split by font — labels are
     bold, values regular. Robust to labels overlapping the value column and
@@ -111,15 +156,16 @@ def _pairs_from_pdf_chars(chars):
         rchars.sort(key=lambda c: c["x0"])
         bold = _join_chars([c for c in rchars if "bold" in c["fontname"].lower()])
         reg = _join_chars([c for c in rchars if "bold" not in c["fontname"].lower()])
-        lines.append((bold.strip(), reg.strip(), _join_chars(rchars).strip()))
-    title = next((t for _, _, t in lines if t), "")
+        lines.append((bold.strip(), reg.strip(), _join_chars(rchars).strip(), rchars))
+    title = next((t for _, _, t, _ in lines if t), "")
     pairs = []
-    for bold, reg, _ in lines:
+    for bold, reg, full, rchars in lines:
         if ":" in bold:                          # "Label: value" in one draw run
             lab, val = bold.split(":", 1)
-            pairs.append((lab.strip(), f"{val} {reg}".strip()))
-        elif bold and reg:
-            pairs.append((bold, reg))            # bold label col + regular value
+            pairs.append(_pair(lab.strip(), f"{val} {reg}".strip(),
+                               _row_source(rchars, full)))
+        elif bold and reg:                       # bold label col + regular value
+            pairs.append(_pair(bold, reg, _row_source(rchars, full)))
     return title, pairs
 
 
@@ -132,6 +178,8 @@ def read_pdf(data, cfg=None):
                 for c in pg.chars:
                     item = dict(c)
                     item["page_number"] = getattr(pg, "page_number", idx) or idx
+                    item["page_width"] = pg.width
+                    item["page_height"] = pg.height
                     chars.append(item)
     except Exception:
         return None                                # corrupt / truncated file
@@ -155,12 +203,15 @@ def read_docx(data, cfg=None):
         return None
     title = next((p.text.strip() for p in d.paragraphs if p.text.strip()), "")
     pairs = []
-    for t in d.tables:
-        for row in t.rows:
+    for ti, t in enumerate(d.tables, start=1):
+        for ri, row in enumerate(t.rows, start=1):
             if len(row.cells) >= 2:
                 lab, val = row.cells[0].text.strip(), row.cells[1].text.strip()
                 if lab and val:
-                    pairs.append((lab, val))
+                    pairs.append(_pair(lab, val, {
+                        "table": ti, "row": ri,
+                        "source_text": f"{lab}: {val}",
+                    }))
     return title, pairs
 
 
@@ -172,9 +223,13 @@ def read_xlsx(data, cfg=None):
         return None
     ws = wb.active
     pairs = []
-    for row in ws.iter_rows(values_only=True):
+    for ri, row in enumerate(ws.iter_rows(values_only=True), start=1):
         if len(row) >= 2 and row[0] is not None and row[1] is not None:
-            pairs.append((str(row[0]).strip(), str(row[1]).strip()))
+            lab, val = str(row[0]).strip(), str(row[1]).strip()
+            pairs.append(_pair(lab, val, {
+                "sheet": ws.title, "row": ri,
+                "source_text": f"{lab}: {val}",
+            }))
     return (ws.title or ""), pairs
 
 
