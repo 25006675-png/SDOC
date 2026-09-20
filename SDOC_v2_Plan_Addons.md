@@ -276,9 +276,10 @@ Recorded so the architecture diagram is not mistaken for the running system.
 | Source evidence | Built — page, box and snippet from PDFs; line and page from text and OCR |
 | **Document pre-processing / full-page coverage** | **Not built** — superseded by A1; the current path reads whole documents |
 | Stage-2 extractor selector (deterministic / LLM) | Built — see A9; deterministic stays the default |
-| **LLM semantic extraction with source evidence** | **Partly built** — the LLM stage runs but returns no evidence; see A9 |
+| LLM semantic extraction with source evidence | Built — the model reports the snippet it read from; rules resolve it to page/line/box |
 | Helper-process parsing with a timeout | Built — see A10 |
-| **Independent verifier on the live mail path** | **Not built** — the verifier is only wired into the ingest script, so Gmail mail gets no second read |
+| Independent verifier on the live mail path | Built — configured in the Gmail sync, gated on `SDOC_VERIFY` and key presence |
+| First-pass and recovery rate metrics (§12.3) | Built — extraction statuses are now counted, not just recorded |
 | Extraction result cache | Not built — required before an LLM sweep of the 520-email set is repeatable |
 | Targeted retry with validation feedback | Built — failures are fed back, with OCR as the alternate route |
 | `FIRST-PASS VALIDATED` / `RECOVERED` statuses | Built — recorded per document with a retry trace |
@@ -355,17 +356,16 @@ rather than an asserted one. That sweep needs a result cache keyed on document
 hash, model and prompt version; **not yet built**, and required before the
 comparison is repeatable.
 
-### Known gap: the LLM stage drops source evidence
+### Source evidence across both stages
 
-Deterministic extraction returns each field with its `line`/`page`/`bbox` and
-snippet. The LLM stage returns bare label/value pairs, so **selecting
-`extractor='llm'` silently disables the source evidence of A4 and §6.3** — the
-evidence viewer falls back to "no snippet stored for this field".
+The model is never asked for coordinates — that produces plausible wrong
+numbers. It returns `{value, source_snippet}` per field, and deterministic
+code locates that snippet in the transcription to recover page, line and box.
+AI understands, rules verify.
 
-The fix is not to ask the model for coordinates, which produces plausible
-wrong numbers. The model should return `{value, source_snippet}` per field,
-and deterministic code should locate that snippet in the transcription to
-recover page, line and box — AI understands, rules verify.
+An extractor that reports no snippet still gets evidence, matched on its
+label and value; a value that appears nowhere in the document is given no
+location rather than a false one.
 
 ## A10. Helper-process document reading
 
@@ -400,11 +400,12 @@ in the parent.
 a security sandbox: a parser exploit still runs as the service user with its
 filesystem and network. Real containment remains the deferred control in A3.
 
+A timeout or crash is named in the case evidence as `reader_failures`, so a
+reviewer can tell it apart from a genuinely corrupt file (A6).
+
 **Remaining gaps:** no memory ceiling — Windows has no `resource` module, and
 the Linux `RLIMIT_AS` path behind a platform check is not implemented. No
-`maxtasksperchild`, so a leaky parser accumulates across documents. And a
-timeout or crash is currently indistinguishable from a corrupt file in the
-evidence, which the A6 "be loud" principle argues against.
+`maxtasksperchild`, so a leaky parser accumulates across documents.
 
 ---
 
