@@ -191,20 +191,36 @@
       field => !field.readOnly && field.offsetParent !== null && field.value.trim() !== '');
   }
 
+  async function countRouted() {
+    try {
+      return ((await api('/api/routed-messages')).items || []).length;
+    } catch (_) {
+      return 0;
+    }
+  }
+
   async function loadWorkspace({ preserveSelection = true, background = false } = {}) {
     $('refresh-button').classList.add('is-loading');
     try {
-      const [health, metrics, cases] = await Promise.all([
-        api('/health'), api('/api/metrics'), api('/api/cases')
+      // The queue counts come from the case list, not /api/metrics: that
+      // endpoint is admin-only, and a worker must not have a dead dashboard
+      // because one tile needs a permission they do not have.
+      const [health, cases, routed] = await Promise.all([
+        api('/health'), api('/api/cases'), countRouted()
       ]);
       setConnection(true, health.store);
       state.cases = cases.items;
-      $('metric-action').textContent = ['DISCREPANCY', 'NEEDS_REVIEW', 'BLOCKED']
-        .reduce((sum, key) => sum + (metrics.states[key] || 0), 0);
-      $('metric-verified').textContent = metrics.states.VERIFIED || 0;
-      $('metric-waiting').textContent = metrics.states.WAITING || 0;
-      $('metric-routed').textContent = metrics.routed_messages || 0;
-      $('nav-action-count').textContent = metrics.open_review_tasks || 0;
+      const byState = state.cases.reduce((counts, item) => {
+        counts[item.state] = (counts[item.state] || 0) + 1;
+        return counts;
+      }, {});
+      const actionCount = [...ACTION_STATES]
+        .reduce((sum, key) => sum + (byState[key] || 0), 0);
+      $('metric-action').textContent = actionCount;
+      $('metric-verified').textContent = byState.VERIFIED || 0;
+      $('metric-waiting').textContent = byState.WAITING || 0;
+      $('metric-routed').textContent = routed;
+      $('nav-action-count').textContent = actionCount;
       if (state.view === 'routed') {
         await loadRoutedView();
         return;
