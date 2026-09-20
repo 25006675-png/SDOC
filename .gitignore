@@ -16,3 +16,4 @@ Averis1am/data/gmail_state.json
 # Mailbox attachments and runtime logs
 Averis1am/data/attachments/
 Averis1am/data/*.log
+Averis1am/data/spend_ledger.json

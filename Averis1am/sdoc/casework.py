@@ -167,6 +167,10 @@ def product_state(record):
     """Translate evaluator states into the product lifecycle."""
     status = record.get("status")
     reason = record.get("review_reason")
+    if record.get("gate_reason"):
+        # Rejected by the preflight gate: a prerequisite is unusable and a
+        # human has to act before processing can continue (Addendum A3).
+        return "BLOCKED"
     if status == "MISMATCH":
         return "DISCREPANCY"
     if status == "NEEDS_REVIEW" and reason == "missing_attachment":

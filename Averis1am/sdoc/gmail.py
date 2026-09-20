@@ -15,6 +15,7 @@ import httpx
 import truststore
 
 from .casework import CaseService
+from .budget import BudgetExceeded, SpendLedger
 from .classify import GeminiEmailClassifier
 
 
@@ -211,9 +212,10 @@ class GmailSource:
 
 
 class GmailSyncService:
-    def __init__(self, store, cfg=None, client=None):
+    def __init__(self, store, cfg=None, client=None, ledger=None):
         self.store = store
         self.cfg = cfg or GmailConfig()
+        self.ledger = ledger or SpendLedger()
         self.client = client or httpx.Client(timeout=30.0, verify=_native_tls())
         self._owns_client = client is None
 
@@ -306,6 +308,8 @@ class GmailSyncService:
         seen = set(state.get("seen_message_ids", []))
         processed = 0
         classifier = None
+        ledger = self.ledger
+        budget_stop = None
         try:
             setting = os.environ.get("SDOC_AI_CLASSIFIER", "auto").lower()
             has_keys = bool(os.environ.get("GEMINI_KEYS") or os.environ.get("GEMINI_KEY"))
@@ -320,6 +324,13 @@ class GmailSyncService:
                     message_id = email.get("gmail_message_id")
                     if message_id in seen:
                         continue
+                    # Spend ceiling before any model call (Addendum A3): a
+                    # sender controls how much arrives, not how much we spend.
+                    try:
+                        ledger.check(email.get("from"))
+                    except BudgetExceeded as exc:
+                        budget_stop = str(exc)
+                        break
                     if state.get("account"):
                         email["gmail_account"] = state["account"]
                         thread_id = email.get("gmail_thread_id") or email.get("thread_id") or message_id
@@ -328,6 +339,7 @@ class GmailSyncService:
                             f"?authuser={state['account']}#all/{thread_id}"
                         )
                     service.ingest_email(email, source)
+                    ledger.record(email.get("from"))
                     seen.add(message_id)
                     processed += 1
         finally:
@@ -335,12 +347,13 @@ class GmailSyncService:
                 classifier.close()
         state.update({
             "last_sync_at": time.time(),
-            "last_error": None,
+            "last_error": budget_stop,
             "processed": int(state.get("processed", 0)) + processed,
             "seen_message_ids": sorted(seen),
         })
         _json_save(self.cfg.state_path, state)
-        return {**self.status(), "processed_now": processed}
+        return {**self.status(), "processed_now": processed,
+                "budget_stop": budget_stop}
 
     def record_error(self, error):
         state = _json_load(self.cfg.state_path, {})

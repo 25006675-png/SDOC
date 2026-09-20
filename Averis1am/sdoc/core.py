@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from .classify import classify_result
 from .compare import compare_documents
 from .docs import doc_kind, identify_pair
+from .preflight import screen_attachments
 from .schema import build_label_map, compare_fields, field_specs
 from .validation import read_with_recovery
 
@@ -39,6 +40,11 @@ def process_email(email, source, cfg=None):
         ev["error"] = f"{type(e).__name__}: {e}"
     rec.update(status=status, review_reason=reason, defect_fields=defects,
                has_defect=status == "MISMATCH")
+    # Carried outside the submission keys: the case store uses it to raise a
+    # BLOCKED action rather than an ordinary review (Addendum A3).
+    gate = ev.get("preflight")
+    if gate and not gate.get("ok"):
+        rec["gate_reason"] = gate["reason"]
     return rec, ev
 
 
@@ -59,6 +65,17 @@ def _process_bl(email, source, cfg, ev):
             return "NEEDS_REVIEW", "missing_attachment", []
         ev["note"] = "draft-BL request, no documents to compare yet"
         return "OK", None, []
+
+    # Preflight gate (Addendum A3): nothing reaches extraction, and no model
+    # call is made, until size and file type have been checked.
+    gate = screen_attachments(source, atts, cfg.get("gate"))
+    ev["preflight"] = gate
+    if not gate["ok"]:
+        # The organizer contract fixes review_reason to wrong_doc_type |
+        # missing_attachment | unreadable | missing_value, so a gated document
+        # reports 'unreadable' -- we did not read it. The specific reason stays
+        # in evidence, where the queue and analytics use it.
+        return "NEEDS_REVIEW", "unreadable", []
 
     si_path, bl_path, docs, problem = identify_pair(atts, source, cfg)
     ev["doc_kinds"] = {a: (doc_kind(*d) if d else "UNREADABLE")
