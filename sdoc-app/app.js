@@ -21,6 +21,21 @@
     return node;
   }
 
+
+  async function loadIdentity() {
+    let identity = null;
+    try { identity = await (await fetch('/api/auth/status')).json(); } catch (_) { return; }
+    if (!identity || !identity.auth_enabled || !identity.username) return;
+    const box = document.getElementById('sidebar-user');
+    if (!box) return;
+    box.hidden = false;
+    document.getElementById('user-name').textContent = identity.display_name || identity.username;
+    document.getElementById('user-role').textContent =
+      identity.role === 'admin' ? 'Administrator' : 'Worker';
+    document.getElementById('user-initial').textContent =
+      (identity.display_name || identity.username).trim().charAt(0).toUpperCase();
+  }
+
   function stateLabel(value) {
     return value.replaceAll('_', ' ').toLowerCase().replace(/^./, c => c.toUpperCase());
   }
@@ -73,6 +88,10 @@
 
   async function api(path, options) {
     const response = await fetch(path, options);
+    if (response.status === 401 || response.status === 403) {
+      location.href = `/login?next=${encodeURIComponent(location.pathname)}`;
+      throw new Error('Sign in required');
+    }
     if (!response.ok) {
       let message = `Request failed (${response.status})`;
       try { message = (await response.json()).detail || message; } catch (_) {}
@@ -88,20 +107,21 @@
   }
 
   function renderMailbox(mailbox) {
+    const providerName = mailbox.provider === 'outlook' ? 'Outlook' : mailbox.provider === 'gmail' ? 'Gmail' : 'Mailbox';
     state.mailbox = mailbox;
     const ready = mailbox.configured && mailbox.connected;
     $('mailbox-dot').classList.toggle('is-online', ready);
     $('mailbox-dot').classList.toggle('is-warning', mailbox.configured && !mailbox.connected);
     $('mailbox-title').textContent = ready
-      ? `Gmail connected${mailbox.account ? `: ${mailbox.account}` : ''}`
-      : mailbox.configured ? 'Gmail ready to connect' : 'Gmail needs OAuth settings';
+      ? `${providerName} connected${mailbox.account ? `: ${mailbox.account}` : ''}`
+      : mailbox.configured ? `${providerName} ready to connect` : `${providerName} needs OAuth settings`;
     $('mailbox-detail').textContent = mailbox.last_error || mailbox.next_action;
     $('mailbox-query').textContent = mailbox.query ? `Query: ${mailbox.query}` : 'No query active';
     $('mailbox-sync').textContent = mailbox.last_sync_at
       ? `Last sync ${formatTime(mailbox.last_sync_at)}. ${mailbox.processed || 0} processed.`
       : `${mailbox.processed || 0} processed. Not synced yet.`;
-    $('mailbox-connect').disabled = !mailbox.configured;
-    $('mailbox-sync-button').disabled = !ready;
+    if ($('mailbox-connect')) $('mailbox-connect').disabled = !mailbox.configured;
+    if ($('mailbox-sync-button')) $('mailbox-sync-button').disabled = !ready;
   }
 
   async function loadMailbox() {
@@ -157,7 +177,7 @@
       $('mailbox-detail').textContent = error.message;
     } finally {
       button.textContent = 'Sync now';
-      button.disabled = !(state.mailbox?.configured && state.mailbox?.connected);
+      if (button) button.disabled = !(state.mailbox?.configured && state.mailbox?.connected);
     }
   }
 
@@ -434,7 +454,7 @@
       );
       const link = gmailUrl(payload, state.mailbox?.account);
       if (link) {
-        const anchor = element('a', 'secondary-link', 'Open in Gmail');
+        const anchor = element('a', 'secondary-link', 'Open email');
         anchor.href = link;
         anchor.target = '_blank';
         anchor.rel = 'noreferrer';
@@ -712,7 +732,7 @@
       $('queue-status').textContent = `${items.length} ${items.length === 1 ? 'message' : 'messages'}`;
       if (!items.length) {
         list.append(element('div', 'empty-list', 'No mail has been routed outside document comparison.'));
-        emptyDetail('No routed mail', 'Unrelated Gmail messages will appear here with sender, subject, category, and source link.');
+        emptyDetail('No routed mail', 'Unrelated mailbox messages will appear here with sender, subject, category, and source link.');
         return;
       }
       items.forEach(item => {
@@ -758,7 +778,7 @@
     section.append(facts);
     const link = gmailUrl(payload, state.mailbox?.account);
     if (link) {
-      const anchor = element('a', 'primary-link', 'Open original email in Gmail');
+      const anchor = element('a', 'primary-link', 'Open original email');
       anchor.href = link;
       anchor.target = '_blank';
       anchor.rel = 'noreferrer';
@@ -790,13 +810,14 @@
     applyFilters();
   });
   $('refresh-button').addEventListener('click', () => loadWorkspace());
-  $('mailbox-connect').addEventListener('click', () => { window.location.href = '/api/mailbox/connect'; });
-  $('mailbox-sync-button').addEventListener('click', syncMailbox);
+  if ($('mailbox-connect')) $('mailbox-connect').addEventListener('click', () => { window.location.href = '/api/mailbox/connect'; });
+  if ($('mailbox-sync-button')) $('mailbox-sync-button').addEventListener('click', syncMailbox);
   setInterval(async () => {
     await loadMailbox();
     await loadRoutedPreview();
     if (state.mailbox?.connected) await loadWorkspace({ preserveSelection: true, background: true });
   }, 30000);
+  loadIdentity();
   loadMailbox();
   loadRoutedPreview();
   loadWorkspace({ preserveSelection: false });

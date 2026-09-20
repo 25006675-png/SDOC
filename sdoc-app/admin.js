@@ -11,6 +11,65 @@
     shipper: 'Shipper', consignee: 'Consignee'
   };
 
+
+  async function loadIdentity() {
+    let identity = null;
+    try { identity = await (await fetch('/api/auth/status')).json(); } catch (_) { return; }
+    if (!identity || !identity.auth_enabled || !identity.username) return;
+    const box = document.getElementById('sidebar-user');
+    if (!box) return;
+    box.hidden = false;
+    document.getElementById('user-name').textContent = identity.display_name || identity.username;
+    document.getElementById('user-role').textContent =
+      identity.role === 'admin' ? 'Administrator' : 'Worker';
+    document.getElementById('user-initial').textContent =
+      (identity.display_name || identity.username).trim().charAt(0).toUpperCase();
+  }
+
+  const MEMBERS = [
+    { name: 'Operations Manager', username: 'admin', role: 'Admin', status: 'Active' },
+    { name: 'Documentation Officer', username: 'worker', role: 'Worker', status: 'Active' },
+    { name: 'Lim Wei Sheng', username: 'w.lim', role: 'Worker', status: 'Active' },
+    { name: 'Nurul Aisyah', username: 'n.aisyah', role: 'Worker', status: 'Invited' }
+  ];
+
+  function renderMembers() {
+    const body = document.getElementById('member-rows');
+    if (!body) return;
+    body.replaceChildren(...MEMBERS.map(member => {
+      const row = document.createElement('tr');
+      const cell = (text, cls) => {
+        const td = document.createElement('td');
+        if (cls) td.className = cls;
+        td.textContent = text;
+        return td;
+      };
+      const actions = document.createElement('td');
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'link-button';
+      remove.textContent = 'Remove';
+      remove.addEventListener('click', () => row.remove());
+      actions.append(remove);
+      row.append(
+        cell(member.name),
+        cell(member.username, 'mono'),
+        cell(member.role, member.role === 'Admin' ? 'role-admin' : 'role-worker'),
+        cell(member.status, member.status === 'Active' ? 'status-active' : 'status-invited'),
+        actions
+      );
+      return row;
+    }));
+  }
+
+  function wireMemberDemo() {
+    const invite = document.getElementById('invite-member');
+    if (!invite) return;
+    invite.addEventListener('click', () => {
+      setText('data-note', 'Member management is a demo surface in this build; invitations are not sent.');
+    });
+  }
+
   function percent(value) { return `${Math.round((value || 0) * 100)}%`; }
   function duration(seconds) {
     if (seconds === null || seconds === undefined) return 'Not available';
@@ -25,10 +84,62 @@
     setText('connection-label', ok ? 'Backend online' : 'Backend unavailable');
     setText('store-label', ok ? store : 'Retry with refresh');
   }
-  async function get(path) {
-    const response = await fetch(path);
+  async function api(path, options) {
+    const response = await fetch(path, options);
+    if (response.status === 401 || response.status === 403) {
+      location.href = `/login?next=${encodeURIComponent(location.pathname)}`;
+      throw new Error('Sign in required');
+    }
     if (!response.ok) throw new Error(`Request failed (${response.status})`);
     return response.json();
+  }
+  const get = path => api(path);
+
+
+  function formatTime(value) {
+    if (value === null || value === undefined) return 'Time unavailable';
+    const date = typeof value === 'number' ? new Date(value * 1000) : new Date(value);
+    return Number.isNaN(date.getTime()) ? 'Time unavailable' : new Intl.DateTimeFormat(undefined, {
+      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+    }).format(date);
+  }
+
+  function renderMailbox(mailbox) {
+    const providerName = mailbox.provider === 'outlook' ? 'Outlook' : mailbox.provider === 'gmail' ? 'Gmail' : 'Mailbox';
+    const ready = mailbox.configured && mailbox.connected;
+    $('admin-mailbox-dot').classList.toggle('is-online', ready);
+    $('admin-mailbox-dot').classList.toggle('is-warning', mailbox.configured && !mailbox.connected);
+    setText('admin-mailbox-title', ready
+      ? `Mailbox connected${mailbox.account ? `: ${mailbox.account}` : ''}`
+      : mailbox.configured ? 'Mailbox ready to connect' : 'Mailbox needs OAuth settings');
+    setText('admin-mailbox-detail', mailbox.last_error || mailbox.next_action);
+    setText('admin-mailbox-query', mailbox.query ? `Query: ${mailbox.query}` : 'No query active');
+    setText('admin-mailbox-sync', mailbox.last_sync_at
+      ? `Last sync ${formatTime(mailbox.last_sync_at)}. ${mailbox.processed || 0} processed.`
+      : `${mailbox.processed || 0} processed. Not synced yet.`);
+    $('admin-mailbox-connect').disabled = !mailbox.configured;
+    $('admin-mailbox-sync-button').disabled = !ready;
+  }
+
+  async function loadMailbox() {
+    try {
+      renderMailbox(await api('/api/mailbox/status'));
+    } catch (error) {
+      setText('admin-mailbox-detail', error.message);
+    }
+  }
+
+  async function syncMailbox() {
+    const button = $('admin-mailbox-sync-button');
+    button.disabled = true; button.textContent = 'Syncing?';
+    try {
+      renderMailbox(await api('/api/mailbox/sync', { method: 'POST' }));
+      await load();
+    } catch (error) {
+      setText('admin-mailbox-detail', error.message);
+    } finally {
+      button.textContent = 'Sync now';
+    }
   }
 
   function renderBars(metrics) {
@@ -82,6 +193,11 @@
       setText('verifier-checks', metrics.verifier_checks);
       setText('verifier-disagreements', metrics.verifier_disagreements);
       setText('verifier-failures', metrics.verifier_failures);
+      const reads = metrics.extraction_reads || 0;
+      setText('extraction-reads', reads);
+      setText('first-pass-rate', reads ? percent(metrics.first_pass_validated_rate) : 'No reads');
+      setText('recovered-rate', reads ? percent(metrics.recovered_rate) : '—');
+      setText('extraction-review', (metrics.extraction_statuses || {}).NEEDS_REVIEW || 0);
       setText('waiting-cases', metrics.waiting_cases);
       setText('overdue-cases', metrics.overdue_cases);
       renderBars(metrics); renderFields(metrics.discrepancy_fields);
@@ -92,5 +208,11 @@
   }
 
   $('admin-refresh').addEventListener('click', load);
+  $('admin-mailbox-connect').addEventListener('click', () => { window.location.href = '/api/mailbox/connect'; });
+  $('admin-mailbox-sync-button').addEventListener('click', syncMailbox);
+  loadIdentity();
+  renderMembers();
+  wireMemberDemo();
+  loadMailbox();
   load();
 })();

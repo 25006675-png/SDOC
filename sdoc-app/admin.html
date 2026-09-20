@@ -21,6 +21,14 @@
         <a class="nav-item" href="/app/"><span class="nav-icon" aria-hidden="true">&#9671;</span>Worker queue</a>
         <a class="nav-item is-active" href="/app/admin.html"><span class="nav-icon" aria-hidden="true">%</span>Admin metrics</a>
       </nav>
+      <div class="sidebar-user" id="sidebar-user" hidden>
+        <span class="user-avatar" id="user-initial" aria-hidden="true">?</span>
+        <span class="user-meta">
+          <strong id="user-name">Signed out</strong>
+          <small id="user-role">—</small>
+        </span>
+        <form method="post" action="/logout"><button class="signout-button" type="submit">Sign out</button></form>
+      </div>
       <div class="sidebar-foot">
         <span class="connection-dot" id="connection-dot"></span>
         <span><strong id="connection-label">Connecting</strong><small id="store-label">Checking backend</small></span>
@@ -35,6 +43,25 @@
         </div>
         <button class="icon-button" id="admin-refresh" type="button" aria-label="Refresh analytics" title="Refresh analytics">&#8635;</button>
       </header>
+
+
+      <section class="mailbox-panel" aria-label="Shared mailbox administration">
+        <div class="mailbox-status">
+          <span class="mailbox-dot" id="admin-mailbox-dot"></span>
+          <div>
+            <h2 id="admin-mailbox-title">Mailbox not connected</h2>
+            <p id="admin-mailbox-detail">Connect the shared operations mailbox once. Workers cannot change this connection.</p>
+          </div>
+        </div>
+        <div class="mailbox-meta">
+          <span id="admin-mailbox-query">No query active</span>
+          <span id="admin-mailbox-sync">Never synced</span>
+        </div>
+        <div class="mailbox-actions">
+          <button class="secondary-button" id="admin-mailbox-connect" type="button">Connect mailbox</button>
+          <button class="primary-button" id="admin-mailbox-sync-button" type="button">Sync now</button>
+        </div>
+      </section>
 
       <section class="admin-summary" aria-label="Key operational metrics">
         <article><span>Processed messages</span><strong id="processed-messages">—</strong><small>Comparison and routed mail</small></article>
@@ -68,6 +95,15 @@
           </dl>
         </section>
         <section class="analytics-card">
+          <header><div><h2>Extraction reliability</h2><p>Per document read, from recorded validation status.</p></div></header>
+          <div class="reliability-score"><strong id="first-pass-rate">&mdash;</strong><span>first-pass validated</span></div>
+          <dl class="metric-list compact">
+            <div><dt>Documents read</dt><dd id="extraction-reads">&mdash;</dd></div>
+            <div><dt>Recovered on retry</dt><dd id="recovered-rate">&mdash;</dd></div>
+            <div><dt>Sent to review</dt><dd id="extraction-review">&mdash;</dd></div>
+          </dl>
+        </section>
+        <section class="analytics-card">
           <header><div><h2>SLA attention</h2><p>Observable risk signals; no assumed SLA target.</p></div></header>
           <dl class="metric-list">
             <div><dt>Waiting for documents</dt><dd id="waiting-cases">—</dd></div>
@@ -80,6 +116,49 @@
           <div class="rank-list" id="field-ranking"></div>
         </section>
       </div>
+      <section class="admin-section" aria-label="Team members">
+        <header class="admin-section-head">
+          <div>
+            <h2>Team members<span class="demo-tag">Demo</span></h2>
+            <p>Worker and admin accounts for this organisation. Not persisted in this build.</p>
+          </div>
+          <button class="secondary-button" id="invite-member" type="button">Invite member</button>
+        </header>
+        <table class="member-table">
+          <thead><tr><th>Name</th><th>Username</th><th>Role</th><th>Status</th><th></th></tr></thead>
+          <tbody id="member-rows"></tbody>
+        </table>
+      </section>
+
+      <section class="admin-section" aria-label="Access and policy">
+        <header class="admin-section-head">
+          <div>
+            <h2>Access &amp; policy<span class="demo-tag">Demo</span></h2>
+            <p>Organisation defaults. These controls are not wired to the backend in this build.</p>
+          </div>
+        </header>
+        <div class="policy-grid">
+          <label>Session timeout
+            <select><option>8 hours</option><option selected>12 hours</option><option>24 hours</option></select>
+          </label>
+          <label>Document retention
+            <select><option>30 days</option><option selected>90 days</option><option>1 year</option></select>
+          </label>
+          <label>Waiting-document timeout
+            <select><option>12 hours</option><option selected>24 hours</option><option>48 hours</option></select>
+          </label>
+          <label class="policy-toggle">
+            <input type="checkbox" checked disabled> Correction emails require human approval
+          </label>
+          <label class="policy-toggle">
+            <input type="checkbox" checked disabled> Auto-close verified cases
+          </label>
+          <label class="policy-toggle">
+            <input type="checkbox" disabled> Allow workers to export case data
+          </label>
+        </div>
+      </section>
+
       <p class="data-note" id="data-note" role="status">Loading persisted metrics…</p>
     </main>
   </div>

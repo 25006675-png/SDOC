@@ -2,9 +2,15 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import hashlib
+import hmac
+import html
 import io
 import mimetypes
 import os
+import time
+from urllib.parse import parse_qs, quote
 import httpx
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
@@ -13,18 +19,126 @@ from typing import Literal
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from . import auth
 from .casework import CASE_STATES, CaseStore
 from .drafting import draft_case_message
-from .gmail import GmailSyncService
+from .mailbox import create_mailbox_sync
 from .supabase_store import SupabaseStore
 
 
 ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT.parent / ".env")
+
+
+
+AUTH_COOKIE = auth.SESSION_COOKIE
+
+
+def auth_enabled():
+    """On unless explicitly disabled; the test suite disables it."""
+    return os.environ.get("SDOC_AUTH", "on").strip().lower() not in {
+        "0", "off", "false", "no"}
+
+
+def user_store(request: Request):
+    """Accounts belong to the app instance, not the module."""
+    store = getattr(request.app.state, "users", None)
+    if store is None:
+        store = auth.UserStore()
+        request.app.state.users = store
+    return store
+
+
+def make_session(username, role):
+    return auth.issue_session(username, role)
+
+
+def read_identity(request: Request):
+    """-> {'username', 'role', 'display_name'} for a signed-in caller."""
+    if not auth_enabled():
+        return {"username": "demo", "role": "admin",
+                "display_name": "Authentication disabled"}
+    session = auth.read_session(request.cookies.get(AUTH_COOKIE))
+    if not session:
+        return None
+    account = user_store(request).get(session["username"]) or {}
+    return {**session,
+            "display_name": account.get("display_name", session["username"])}
+
+
+def read_role(request: Request):
+    identity = read_identity(request)
+    return identity["role"] if identity else None
+
+
+def login_page(error="", next_path="/app/"):
+    if not next_path.startswith("/app"):
+        next_path = "/app/"
+    message = f'<p class="error">{html.escape(error)}</p>' if error else ""
+    safe_next = html.escape(next_path, quote=True)
+    return f"""
+    <!doctype html>
+    <html lang="en">
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <title>Sign in - SDOC</title>
+      <style>
+        body {{ margin: 0; min-height: 100vh; display: grid; place-items: center; font-family: Arial, sans-serif; background: #0a1720; color: #f4f7f5; }}
+        main {{ width: min(420px, calc(100vw - 32px)); padding: 32px; border: 1px solid #385247; border-radius: 12px; background: #10242b; }}
+        h1 {{ margin: 0 0 8px; font-size: 24px; }} p {{ color: #b7c6bf; line-height: 1.6; }}
+        label, input, button {{ display: block; width: 100%; box-sizing: border-box; }}
+        label {{ margin-top: 22px; color: #dce8df; font-weight: 700; font-size: 13px; }}
+        input {{ margin-top: 8px; min-height: 44px; border: 1px solid #5d746a; border-radius: 7px; padding: 0 12px; background: #07151b; color: white; }}
+        button {{ margin-top: 16px; min-height: 44px; border: 0; border-radius: 7px; background: #b9f18b; color: #10251d; font-weight: 800; cursor: pointer; }}
+        .error {{ color: #ffb3a8; }} a {{ color: #b9f18b; }}
+      </style>
+    </head>
+    <body><main>
+      <h1>Sign in to SDOC</h1>
+      <p>Use the team passcode. Admin passcodes open analytics and mailbox controls; worker passcodes open the case queue.</p>
+      {message}
+      <form method="post" action="/login">
+        <label>Username<input name="username" type="text" autocomplete="username" autofocus required></label>
+        <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+        <input name="next" type="hidden" value="{safe_next}">
+        <button type="submit">Sign in</button>
+      </form>
+      <p><a href="/">Return to the public overview</a></p>
+    </main></body></html>
+    """
+
+
+def wants_html(path):
+    return path.startswith("/app") or path.startswith("/login")
+
+
+def is_public_path(path):
+    return (
+        path in {"/", "/index.html", "/styles.css", "/hero.css", "/app.js", "/health", "/login", "/api/auth/status"}
+        or path.startswith("/api/mailbox/oauth/callback")
+        or path.startswith("/favicon")
+    )
+
+
+def required_role(path):
+    if path.startswith("/app/admin") or path in {"/api/metrics", "/api/mailbox/connect"}:
+        return "admin"
+    if path.startswith("/api/") or path.startswith("/app"):
+        return "worker"
+    return None
+
+
+def authorised(role, required):
+    if required is None:
+        return True
+    if role == "admin":
+        return True
+    return role == required
 
 
 class ResolveTaskRequest(BaseModel):
@@ -86,7 +200,7 @@ def attachment_root():
     return Path(os.environ.get("SDOC_ATTACHMENT_ROOT", str(ROOT / "data"))).resolve()
 
 
-def resolve_attachment_path(source_path: str, gmail_sync=None):
+def resolve_attachment_path(source_path: str, mailbox_sync=None):
     source_path = (source_path or "").replace("\\", "/").lstrip("/")
     if not source_path.startswith("attachments/") or ".." in Path(source_path).parts:
         raise HTTPException(404, "attachment not found")
@@ -95,9 +209,9 @@ def resolve_attachment_path(source_path: str, gmail_sync=None):
     if root not in candidate.parents and candidate != root:
         raise HTTPException(404, "attachment not found")
     if not candidate.is_file():
-        if source_path.startswith("attachments/gmail/") and gmail_sync:
+        if source_path.startswith(("attachments/gmail/", "attachments/outlook/")) and mailbox_sync:
             try:
-                candidate = Path(gmail_sync.fetch_attachment(source_path)).resolve()
+                candidate = Path(mailbox_sync.fetch_attachment(source_path)).resolve()
             except Exception:
                 raise HTTPException(404, "attachment not found")
         if not candidate.is_file():
@@ -111,13 +225,13 @@ def create_app(store=None, start_scheduler=True):
     @asynccontextmanager
     async def lifespan(app):
         app.state.store = store or create_store()
-        app.state.gmail_sync = GmailSyncService(app.state.store)
+        app.state.mailbox_sync = create_mailbox_sync(app.state.store)
         task = None
-        gmail_task = None
+        mailbox_task = None
         if start_scheduler:
             interval = max(10, int(os.environ.get("SDOC_TIMER_INTERVAL", "60")))
             wait_seconds = max(1, int(os.environ.get("SDOC_WAIT_SECONDS", "86400")))
-            gmail_interval = int(os.environ.get("SDOC_GMAIL_SYNC_INTERVAL", "60"))
+            mailbox_interval = int(os.environ.get("SDOC_MAILBOX_SYNC_INTERVAL", os.environ.get("SDOC_GMAIL_SYNC_INTERVAL", "60")))
 
             async def overdue_loop():
                 while True:
@@ -126,19 +240,19 @@ def create_app(store=None, start_scheduler=True):
 
             task = asyncio.create_task(overdue_loop())
 
-            async def gmail_loop():
+            async def mailbox_loop():
                 while True:
-                    await asyncio.sleep(max(30, gmail_interval))
-                    status = app.state.gmail_sync.status()
+                    await asyncio.sleep(max(30, mailbox_interval))
+                    status = app.state.mailbox_sync.status()
                     if not status["configured"] or not status["connected"]:
                         continue
                     try:
-                        await asyncio.to_thread(app.state.gmail_sync.sync_once)
+                        await asyncio.to_thread(app.state.mailbox_sync.sync_once)
                     except Exception as exc:
-                        app.state.gmail_sync.record_error(exc)
+                        app.state.mailbox_sync.record_error(exc)
 
-            if gmail_interval > 0:
-                gmail_task = asyncio.create_task(gmail_loop())
+            if mailbox_interval > 0:
+                mailbox_task = asyncio.create_task(mailbox_loop())
         try:
             yield
         finally:
@@ -146,11 +260,11 @@ def create_app(store=None, start_scheduler=True):
                 task.cancel()
                 with suppress(asyncio.CancelledError):
                     await task
-            if gmail_task:
-                gmail_task.cancel()
+            if mailbox_task:
+                mailbox_task.cancel()
                 with suppress(asyncio.CancelledError):
-                    await gmail_task
-            app.state.gmail_sync.close()
+                    await mailbox_task
+            app.state.mailbox_sync.close()
             if owns_store:
                 app.state.store.close()
 
@@ -175,6 +289,65 @@ def create_app(store=None, start_scheduler=True):
         allow_headers=["Content-Type", "Authorization"],
     )
 
+
+    app.state.users = auth.UserStore()
+
+    @app.middleware("http")
+    async def account_auth(request: Request, call_next):
+        path = request.url.path
+        if is_public_path(path):
+            return await call_next(request)
+        need = required_role(path)
+        role = read_role(request)
+        if authorised(role, need):
+            return await call_next(request)
+        if wants_html(path):
+            return RedirectResponse(f"/login?next={quote(path)}", status_code=303)
+        return JSONResponse(
+            {"detail": "authentication required"},
+            status_code=401 if role is None else 403,
+        )
+
+    @app.get("/login", response_class=HTMLResponse)
+    def login(request: Request):
+        if not auth_enabled():
+            return RedirectResponse("/app/", status_code=303)
+        return HTMLResponse(login_page(next_path=request.query_params.get("next", "/app/")))
+
+    @app.post("/login")
+    async def login_submit(request: Request):
+        body = (await request.body()).decode("utf-8", "replace")
+        form = {key: values[-1] for key, values in parse_qs(body).items()}
+        account = user_store(request).authenticate(
+            str(form.get("username", "")), str(form.get("password", "")))
+        if not account:
+            return HTMLResponse(
+                login_page("That username and password were not recognized.",
+                           str(form.get("next") or "/app/")),
+                status_code=401)
+        role = account["role"]
+        target = str(form.get("next") or ("/app/admin.html" if role == "admin" else "/app/"))
+        if not target.startswith("/app"):
+            target = "/app/"
+        if role == "worker" and target.startswith("/app/admin"):
+            target = "/app/"
+        response = RedirectResponse(target, status_code=303)
+        response.set_cookie(AUTH_COOKIE, make_session(account["username"], role), httponly=True, samesite="lax", secure=os.environ.get("SDOC_COOKIE_SECURE", "0") == "1")
+        return response
+
+    @app.post("/logout")
+    def logout():
+        response = RedirectResponse("/", status_code=303)
+        response.delete_cookie(AUTH_COOKIE)
+        return response
+
+    @app.get("/api/auth/status")
+    def auth_status(request: Request):
+        identity = read_identity(request)
+        return {"auth_enabled": auth_enabled(), "role": (identity or {}).get("role"),
+                "username": (identity or {}).get("username"),
+                "display_name": (identity or {}).get("display_name")}
+
     @app.get("/health")
     def health():
         return {"status": "ok", "store": type(app.state.store).__name__}
@@ -195,12 +368,12 @@ def create_app(store=None, start_scheduler=True):
 
     @app.get("/api/mailbox/status")
     def mailbox_status():
-        return app.state.gmail_sync.status()
+        return app.state.mailbox_sync.status()
 
     @app.get("/api/mailbox/connect")
     def mailbox_connect():
         try:
-            return RedirectResponse(app.state.gmail_sync.authorization_url(), status_code=302)
+            return RedirectResponse(app.state.mailbox_sync.authorization_url(), status_code=302)
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from exc
 
@@ -211,30 +384,30 @@ def create_app(store=None, start_scheduler=True):
         if not code:
             raise HTTPException(400, "missing OAuth code")
         try:
-            app.state.gmail_sync.finish_oauth(code, state)
+            app.state.mailbox_sync.finish_oauth(code, state)
         except ValueError as exc:
-            app.state.gmail_sync.record_error(exc)
+            app.state.mailbox_sync.record_error(exc)
             return HTMLResponse(f"""
             <!doctype html>
             <html lang="en">
-            <head><meta charset="utf-8"><title>Gmail connection issue</title></head>
+            <head><meta charset="utf-8"><title>Mailbox connection issue</title></head>
             <body>
-              <h1>Gmail was not connected</h1>
+              <h1>Mailbox was not connected</h1>
               <p>{str(exc)}</p>
-              <p>Return to <a href="/app/">SDOC</a> and click Connect Gmail again.</p>
+              <p>Return to <a href="/app/admin.html">SDOC Admin</a> and click Connect mailbox again.</p>
             </body>
             </html>
             """, status_code=400)
         except httpx.HTTPError as exc:
-            app.state.gmail_sync.record_error(exc)
-            raise HTTPException(502, f"Gmail OAuth exchange failed: {exc}") from exc
+            app.state.mailbox_sync.record_error(exc)
+            raise HTTPException(502, f"Mailbox OAuth exchange failed: {exc}") from exc
         return """
         <!doctype html>
         <html lang="en">
-        <head><meta charset="utf-8"><title>Gmail connected</title></head>
+        <head><meta charset="utf-8"><title>Mailbox connected</title></head>
         <body>
-          <script>location.replace('/app/?mailbox=connected')</script>
-          <p>Gmail connected. Return to <a href="/app/">SDOC</a>.</p>
+          <script>location.replace('/app/admin.html?mailbox=connected')</script>
+          <p>Mailbox connected. Return to <a href="/app/admin.html">SDOC Admin</a>.</p>
         </body>
         </html>
         """
@@ -242,12 +415,12 @@ def create_app(store=None, start_scheduler=True):
     @app.post("/api/mailbox/sync")
     def mailbox_sync():
         try:
-            return app.state.gmail_sync.sync_once()
+            return app.state.mailbox_sync.sync_once()
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from exc
         except httpx.HTTPError as exc:
-            app.state.gmail_sync.record_error(exc)
-            raise HTTPException(502, f"Gmail sync failed: {exc}") from exc
+            app.state.mailbox_sync.record_error(exc)
+            raise HTTPException(502, f"Mailbox sync failed: {exc}") from exc
 
     @app.get("/api/cases/{case_id}")
     def get_case(case_id: str):
@@ -268,7 +441,7 @@ def create_app(store=None, start_scheduler=True):
 
     @app.get("/api/attachments/preview")
     def attachment_preview(path: str = Query(min_length=1)):
-        file_path = resolve_attachment_path(path, app.state.gmail_sync)
+        file_path = resolve_attachment_path(path, app.state.mailbox_sync)
         media_type = mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
         # Inline: a browser treats the default 'attachment' as a download, so an
         # iframe or preview tab would save the file instead of showing it.
@@ -290,7 +463,7 @@ def create_app(store=None, start_scheduler=True):
         zoom, so a box placed over it lands in the wrong place; a bare page
         raster makes the mapping from PDF points exact.
         """
-        file_path = resolve_attachment_path(path, app.state.gmail_sync)
+        file_path = resolve_attachment_path(path, app.state.mailbox_sync)
         try:
             png, width, height = render_pdf_page(file_path, page, scale)
         except IndexError:
@@ -309,7 +482,7 @@ def create_app(store=None, start_scheduler=True):
 
     @app.get("/api/attachments/download")
     def attachment_download(path: str = Query(min_length=1)):
-        file_path = resolve_attachment_path(path, app.state.gmail_sync)
+        file_path = resolve_attachment_path(path, app.state.mailbox_sync)
         media_type = mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
         return FileResponse(
             file_path,
@@ -346,6 +519,9 @@ def create_app(store=None, start_scheduler=True):
     worker_app = ROOT.parent / "sdoc-app"
     if worker_app.exists():
         app.mount("/app", StaticFiles(directory=worker_app, html=True), name="worker-app")
+    landing_app = ROOT.parent / "sdoc-landing"
+    if landing_app.exists():
+        app.mount("/", StaticFiles(directory=landing_app, html=True), name="landing-app")
 
     return app
 

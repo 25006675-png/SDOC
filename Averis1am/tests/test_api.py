@@ -170,9 +170,6 @@ class TestApi(unittest.TestCase):
         self.assertEqual(case["review_tasks"][0]["status"], "RESOLVED")
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class TestCorrectFieldEndpoint(unittest.TestCase):
     """The Correct Extraction action over HTTP (v2 §9)."""
@@ -241,3 +238,102 @@ class TestCorrectFieldEndpoint(unittest.TestCase):
                   "actor": "worker@example.com"},
         )
         self.assertEqual(response.status_code, 400)
+
+
+class TestAccountAuth(unittest.TestCase):
+    """Username/password sign-in and worker/admin separation."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        root = Path(self.tmp.name)
+        self.env = patch.dict(
+            "os.environ",
+            {
+                "SDOC_AUTH": "on",
+                "SDOC_SESSION_SECRET": "test-signing-key",
+                "SDOC_ADMIN_PASSWORD": "admin-pass",
+                "SDOC_WORKER_PASSWORD": "worker-pass",
+                "SDOC_MAILBOX_PROVIDER": "gmail",
+                "GOOGLE_CLIENT_ID": "",
+                "GOOGLE_CLIENT_SECRET": "",
+                "SDOC_GMAIL_TOKEN_PATH": str(root / "gmail_token.json"),
+                "SDOC_GMAIL_STATE_PATH": str(root / "gmail_state.json"),
+                "SDOC_ATTACHMENT_ROOT": str(root),
+            },
+            clear=False,
+        )
+        self.env.start()
+        self.store = CaseStore(":memory:")
+        self.client = TestClient(create_app(self.store, start_scheduler=False))
+        self.client.__enter__()
+
+    def tearDown(self):
+        self.client.__exit__(None, None, None)
+        self.store.close()
+        self.env.stop()
+        self.tmp.cleanup()
+
+    def _login(self, username, password, next_path="/app/"):
+        return self.client.post(
+            "/login",
+            data=f"username={username}&password={password}&next={next_path}",
+            headers={"content-type": "application/x-www-form-urlencoded"},
+            follow_redirects=False,
+        )
+
+    def test_landing_is_public_but_the_app_requires_sign_in(self):
+        self.assertEqual(self.client.get("/").status_code, 200)
+        response = self.client.get("/app/", follow_redirects=False)
+        self.assertEqual(response.status_code, 303)
+        self.assertIn("/login", response.headers["location"])
+        self.assertEqual(self.client.get("/api/cases").status_code, 401)
+
+    def test_bad_password_is_rejected(self):
+        self.assertEqual(self._login("admin", "wrong").status_code, 401)
+        self.assertEqual(self.client.get("/api/cases").status_code, 401)
+
+    def test_unknown_user_is_rejected(self):
+        self.assertEqual(self._login("nobody", "worker-pass").status_code, 401)
+
+    def test_worker_signs_in_and_is_identified(self):
+        self.assertEqual(self._login("worker", "worker-pass").status_code, 303)
+        status = self.client.get("/api/auth/status").json()
+        self.assertEqual(status["username"], "worker")
+        self.assertEqual(status["role"], "worker")
+        self.assertTrue(status["display_name"])
+
+    def test_worker_cannot_reach_admin_surfaces(self):
+        self._login("worker", "worker-pass")
+        self.assertEqual(self.client.get("/app/").status_code, 200)
+        self.assertEqual(self.client.get("/api/mailbox/status").status_code, 200)
+        self.assertEqual(self.client.get("/api/metrics").status_code, 403)
+        self.assertEqual(
+            self.client.get("/api/mailbox/connect",
+                            follow_redirects=False).status_code, 403)
+
+    def test_worker_may_still_refresh_the_queue(self):
+        self._login("worker", "worker-pass")
+        # Unconfigured, so it cannot succeed -- but it must not be forbidden.
+        self.assertNotEqual(self.client.post("/api/mailbox/sync").status_code, 403)
+
+    def test_admin_reaches_admin_surfaces(self):
+        login = self._login("admin", "admin-pass", "/app/admin.html")
+        self.assertEqual(login.status_code, 303)
+        self.assertEqual(login.headers["location"], "/app/admin.html")
+        self.assertEqual(self.client.get("/app/admin.html").status_code, 200)
+        self.assertEqual(self.client.get("/api/metrics").status_code, 200)
+
+    def test_worker_is_not_sent_to_the_admin_page(self):
+        login = self._login("worker", "worker-pass", "/app/admin.html")
+        self.assertEqual(login.headers["location"], "/app/")
+
+    def test_logout_ends_the_session(self):
+        self._login("admin", "admin-pass")
+        self.assertEqual(self.client.get("/api/metrics").status_code, 200)
+        self.client.post("/logout", follow_redirects=False)
+        self.assertEqual(self.client.get("/api/metrics").status_code, 401)
+
+    def test_a_tampered_cookie_is_refused(self):
+        self._login("worker", "worker-pass")
+        self.client.cookies.set("sdoc_session", "forged.value")
+        self.assertEqual(self.client.get("/api/cases").status_code, 401)

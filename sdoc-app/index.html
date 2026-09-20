@@ -36,6 +36,14 @@
           Admin metrics
         </a>
       </nav>
+      <div class="sidebar-user" id="sidebar-user" hidden>
+        <span class="user-avatar" id="user-initial" aria-hidden="true">?</span>
+        <span class="user-meta">
+          <strong id="user-name">Signed out</strong>
+          <small id="user-role">—</small>
+        </span>
+        <form method="post" action="/logout"><button class="signout-button" type="submit">Sign out</button></form>
+      </div>
       <div class="sidebar-foot">
         <span class="connection-dot" id="connection-dot"></span>
         <span><strong id="connection-label">Connecting</strong><small id="store-label">Checking backend</small></span>
@@ -65,21 +73,17 @@
         <div><span>Routed mail</span><strong id="metric-routed">0</strong></div>
       </section>
 
-      <section class="mailbox-panel" aria-label="Mailbox connection">
+      <section class="mailbox-panel" aria-label="Mailbox status">
         <div class="mailbox-status">
           <span class="mailbox-dot" id="mailbox-dot"></span>
           <div>
-            <h2 id="mailbox-title">Gmail not connected</h2>
-            <p id="mailbox-detail">Connect a mailbox to analyze new shipping document emails.</p>
+            <h2 id="mailbox-title">Mailbox status unavailable</h2>
+            <p id="mailbox-detail">An administrator connects the shared operations mailbox. Workers process the queue it creates.</p>
           </div>
         </div>
         <div class="mailbox-meta">
           <span id="mailbox-query">No query active</span>
           <span id="mailbox-sync">Never synced</span>
-        </div>
-        <div class="mailbox-actions">
-          <button class="secondary-button" id="mailbox-connect" type="button">Connect Gmail</button>
-          <button class="primary-button" id="mailbox-sync-button" type="button">Sync now</button>
         </div>
       </section>
 

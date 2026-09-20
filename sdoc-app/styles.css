@@ -418,3 +418,63 @@ main { min-width: 0; padding: 0 30px 34px; }
   padding: 8px 10px; color: var(--ink); background: white;
 }
 @media (max-width: 900px) { .correction-form { grid-template-columns: 1fr; } }
+
+/* Signed-in user chip in the sidebar. */
+.sidebar-user {
+  display: flex; align-items: center; gap: 10px; padding: 12px 14px;
+  margin: 0 12px 10px; border: 1px solid #d5e0da; border-radius: 10px;
+  background: white;
+}
+.user-avatar {
+  display: grid; place-items: center; width: 32px; height: 32px; flex: none;
+  border-radius: 50%; background: #1e5940; color: white; font-weight: 800;
+  font-size: 14px;
+}
+.user-meta { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.user-meta strong { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-meta small { color: #62716a; font-size: 11px; }
+.signout-button {
+  border: 1px solid #d3c4c4; border-radius: 6px; background: white;
+  color: #93342b; font-size: 11px; font-weight: 700; padding: 5px 9px;
+  cursor: pointer;
+}
+.signout-button:hover { background: #fbeceb; }
+
+/* Admin sections that are demo surfaces, not wired to the backend. */
+.admin-section {
+  margin-top: 20px; padding: 18px 20px; background: white;
+  border: 1px solid #dbe4df; border-radius: 12px;
+}
+.admin-section-head {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  gap: 16px; flex-wrap: wrap; margin-bottom: 14px;
+}
+.admin-section-head h2 { margin: 0; font-size: 15px; }
+.admin-section-head p { margin: 4px 0 0; color: #62716a; font-size: 13px; }
+.demo-tag {
+  margin-left: 8px; padding: 2px 8px; border-radius: 999px;
+  background: #fdf0d8; color: #7a5a17; font-size: 10px; font-weight: 800;
+  letter-spacing: .04em; text-transform: uppercase; vertical-align: middle;
+}
+.member-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.member-table th {
+  text-align: left; padding: 8px 10px; color: #62716a; font-size: 11px;
+  text-transform: uppercase; letter-spacing: .04em; border-bottom: 1px solid #e4ebe7;
+}
+.member-table td { padding: 10px; border-bottom: 1px solid #f0f4f2; }
+.member-table .mono { font-family: ui-monospace, Consolas, monospace; color: #4c5b55; }
+.role-admin { color: #1e5940; font-weight: 700; }
+.role-worker { color: #4c5b55; }
+.status-active { color: #1e7a4d; font-weight: 600; }
+.status-invited { color: #a06a12; font-weight: 600; }
+.policy-grid {
+  display: grid; gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+.policy-grid label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: #4c5b55; }
+.policy-grid select {
+  min-height: 38px; border: 1px solid #d5e0da; border-radius: 7px;
+  padding: 0 10px; background: white; color: var(--ink);
+}
+.policy-toggle { flex-direction: row !important; align-items: center; gap: 9px !important; }
+@media (max-width: 720px) { .member-table thead { display: none; } }
