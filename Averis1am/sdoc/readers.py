@@ -183,7 +183,9 @@ def read_pdf(data, cfg=None):
                     chars.append(item)
     except Exception:
         return None                                # corrupt / truncated file
-    if chars:
+    # force_ocr is the alternate reading route of the recovery cycle (v2 §7.4):
+    # re-read a document whose text layer parsed but validated incomplete.
+    if chars and not _cfg_flag(cfg, "force_ocr"):
         return _pairs_from_pdf_chars(chars)
     # no text layer: scanned copy — OCR if enabled, else unreadable
     if _cfg_flag(cfg, "ocr") and ocr_available():

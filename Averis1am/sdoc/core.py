@@ -7,6 +7,7 @@ from .classify import classify_result
 from .compare import compare_documents
 from .docs import doc_kind, identify_pair
 from .schema import build_label_map, compare_fields, field_specs
+from .validation import read_with_recovery
 
 
 def process_email(email, source, cfg=None):
@@ -64,6 +65,18 @@ def _process_bl(email, source, cfg, ev):
                        for a, d in docs.items()}
     if problem:
         return "NEEDS_REVIEW", problem, []
+
+    # Deterministic validation plus at most one recovery cycle, on the two
+    # documents that actually get compared (v2 §7.2-7.4). The extraction
+    # status is evidence; it does not override the submission status below.
+    validation = {}
+    for side, path in (("si", si_path), ("bl", bl_path)):
+        recovered, status, trace = read_with_recovery(
+            source, path, cfg, doc=docs[path], fields=cfg.get("field_list"))
+        if recovered is not None:
+            docs[path] = recovered
+        validation[side] = {"document": path, "status": status, **trace}
+    ev["validation"] = validation
 
     result = compare_documents(docs[si_path][1], docs[bl_path][1],
                                label_map=cfg.get("label_map"),
