@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import mimetypes
 import os
 import httpx
@@ -12,7 +13,7 @@ from typing import Literal
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -49,6 +50,36 @@ def create_store():
         return SupabaseStore()
     db_path = os.environ.get("SDOC_DB_PATH", str(ROOT / "data" / "sdoc.db"))
     return CaseStore(db_path)
+
+
+MAX_PAGE = 2000
+
+
+def render_pdf_page(file_path, page, scale):
+    """Render one page of a PDF to PNG bytes.
+
+    -> (png_bytes, page_width_pt, page_height_pt); the point size lets a
+    viewer map stored bounding boxes onto the image without guessing.
+    Raises ValueError for a non-PDF and IndexError for a page out of range.
+    """
+    if file_path.suffix.lower() != ".pdf":
+        raise ValueError("page rendering is only available for PDF documents")
+    import pypdfium2 as pdfium
+
+    try:
+        pdf = pdfium.PdfDocument(str(file_path))
+    except Exception as exc:
+        raise ValueError("document could not be opened") from exc
+    try:
+        if page > len(pdf):
+            raise IndexError(page)
+        sheet = pdf[page - 1]
+        width, height = sheet.get_width(), sheet.get_height()
+        buffer = io.BytesIO()
+        sheet.render(scale=scale).to_pil().save(buffer, format="PNG")
+    finally:
+        pdf.close()
+    return buffer.getvalue(), round(width, 2), round(height, 2)
 
 
 def attachment_root():
@@ -239,7 +270,42 @@ def create_app(store=None, start_scheduler=True):
     def attachment_preview(path: str = Query(min_length=1)):
         file_path = resolve_attachment_path(path, app.state.gmail_sync)
         media_type = mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
-        return FileResponse(file_path, media_type=media_type, filename=file_path.name)
+        # Inline: a browser treats the default 'attachment' as a download, so an
+        # iframe or preview tab would save the file instead of showing it.
+        return FileResponse(
+            file_path,
+            media_type=media_type,
+            filename=file_path.name,
+            content_disposition_type="inline",
+        )
+
+    @app.get("/api/attachments/page")
+    def attachment_page(path: str = Query(min_length=1),
+                        page: int = Query(1, ge=1, le=MAX_PAGE),
+                        scale: float = Query(2.0, ge=0.5, le=4.0)):
+        """One PDF page as a PNG, with the page's own point size in the headers.
+
+        The evidence viewer overlays extraction bounding boxes on this image.
+        A browser's built-in PDF viewer adds a toolbar, margins and its own
+        zoom, so a box placed over it lands in the wrong place; a bare page
+        raster makes the mapping from PDF points exact.
+        """
+        file_path = resolve_attachment_path(path, app.state.gmail_sync)
+        try:
+            png, width, height = render_pdf_page(file_path, page, scale)
+        except IndexError:
+            raise HTTPException(404, "page not found")
+        except ValueError as exc:
+            raise HTTPException(415, str(exc)) from exc
+        return Response(
+            content=png,
+            media_type="image/png",
+            headers={
+                "X-Page-Width": str(width),
+                "X-Page-Height": str(height),
+                "Cache-Control": "private, max-age=300",
+            },
+        )
 
     @app.get("/api/attachments/download")
     def attachment_download(path: str = Query(min_length=1)):

@@ -100,6 +100,9 @@ class TestApi(unittest.TestCase):
         self.assertEqual(preview.status_code, 200)
         self.assertEqual(preview.content, b"%PDF-test")
 
+        # Inline, or the browser downloads the file instead of showing it.
+        self.assertIn("inline", preview.headers["content-disposition"])
+
         download = self.client.get("/api/attachments/download", params={"path": "attachments/a_SI.pdf"})
         self.assertEqual(download.status_code, 200)
         self.assertIn("attachment", download.headers["content-disposition"])
@@ -108,6 +111,40 @@ class TestApi(unittest.TestCase):
             self.client.get("/api/attachments/preview", params={"path": "../gmail_token.json"}).status_code,
             404,
         )
+
+    def test_attachment_page_render_matches_pdf_point_size(self):
+        """The evidence overlay needs the page raster and its own point size."""
+        source = (Path(__file__).resolve().parents[2] / "gmail-test" /
+                  "attachments" / "GMAIL-STD-0001_SI.pdf")
+        attachment = Path(self.tmp.name) / "attachments" / "a_SI.pdf"
+        attachment.parent.mkdir(parents=True, exist_ok=True)
+        attachment.write_bytes(source.read_bytes())
+
+        page = self.client.get("/api/attachments/page", params={"path": "attachments/a_SI.pdf"})
+        self.assertEqual(page.status_code, 200)
+        self.assertEqual(page.headers["content-type"], "image/png")
+        self.assertTrue(page.content.startswith(bytes.fromhex("89504e47")))
+        # Same coordinate space the readers store bounding boxes in.
+        self.assertEqual(page.headers["x-page-width"], "595.28")
+        self.assertEqual(page.headers["x-page-height"], "841.89")
+
+        self.assertEqual(
+            self.client.get("/api/attachments/page",
+                            params={"path": "attachments/a_SI.pdf", "page": 99}).status_code,
+            404,
+        )
+        self.assertEqual(
+            self.client.get("/api/attachments/page",
+                            params={"path": "../gmail_token.json"}).status_code,
+            404,
+        )
+
+    def test_attachment_page_rejects_non_pdf(self):
+        attachment = Path(self.tmp.name) / "attachments" / "a_SI.docx"
+        attachment.parent.mkdir(parents=True, exist_ok=True)
+        attachment.write_bytes(bytes.fromhex("504b0304"))
+        response = self.client.get("/api/attachments/page", params={"path": "attachments/a_SI.docx"})
+        self.assertEqual(response.status_code, 415)
 
     def test_mailbox_status_without_oauth_config(self):
         status = self.client.get("/api/mailbox/status")

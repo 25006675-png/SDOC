@@ -118,7 +118,7 @@ Combining per-page outputs is where the remaining risk sits:
 
 ## A3. Preflight Security & Resource Gate
 
-**New section, inserted before §5 (Document Identity). Status: Designed.**
+**New section, inserted before §5 (Document Identity). Status: Built.**
 
 Full-page coverage creates a cost-amplification surface: an untrusted sender
 controls the input, and the input controls AI spend. A 500-page junk PDF must
@@ -151,25 +151,30 @@ surface** — counting pages requires opening the document:
 
 1. byte length — free, no parse
 2. magic bytes — free, first few bytes
-3. *only now is parsing permitted* — in a child process, with a wall-clock timeout
-4. page count
+3. *only now is parsing permitted*
+4. page count and archive expansion
 
 A gate that opens a hostile PDF to measure it is not a cheap gate.
+
+**Implemented as far as step 4.** Parsing runs in-process, not in a sandboxed
+child with a wall-clock timeout — that belongs with the deferred isolation
+control below. So the ordering reduces how often hostile bytes reach a parser;
+it does not contain a parser that misbehaves once they do.
 
 ### Controls
 
 | Control | Status | Note |
 |---|---|---|
-| Filename sanitization on write | **Designed** | Fixes a live path-traversal defect; see A7. |
-| Real file-type verification (magic bytes) | Designed | Do not trust the extension. |
-| Max size / page count / attachment count | Designed | Configurable; over-limit → `BLOCKED`. |
-| Encrypted or corrupt → `BLOCKED`, no retry | Designed | Do not loop on unreadable input. |
-| OOXML expansion limits | Designed | `.docx` and `.xlsx` **are** zip archives — the bomb vector is in the accepted types, not a hypothetical `.zip`. Covers entity expansion, not just decompressed size. |
-| Per-case AI budget | Designed | Stop, do not continue indefinitely. |
-| Per-sender rate limit + global daily ceiling | Designed | A per-case budget does not stop horizontal amplification: 1,000 compliant emails all pass it. |
-| Queue and concurrency limits | Designed | One sender cannot occupy every worker. |
+| Filename sanitization on write | **Built** | Fixed a live path-traversal defect. |
+| Real file-type verification (magic bytes) | **Built** | The extension is not trusted. |
+| Max size / page count / attachment count | **Built** | Configurable by environment; over-limit → `BLOCKED`. |
+| Encrypted or corrupt → `BLOCKED`, no retry | **Built** | No loop on unreadable input. |
+| OOXML expansion limits | **Built** | `.docx` and `.xlsx` **are** zip archives — the bomb vector is in the accepted types, not a hypothetical `.zip`. Covers entity expansion, not just decompressed size. |
+| Per-case AI budget | **Partly built** | Bounded by the gate's size, page and attachment caps; a token-level budget is not implemented. |
+| Per-sender rate limit + global daily ceiling | **Built** | Daily ceilings persist across restarts, so a restart does not reset an attacker's allowance. |
+| Queue and concurrency limits | Designed | One sender cannot occupy every worker. Not implemented. |
 | Malware scanning | **Deferred** | ClamAV directly. Genuinely important in production — logistics is a heavily phished sector — but not an MVP item per §14. |
-| Isolated container parsing, no egress | **Deferred** | Deployment requirement. |
+| Isolated container parsing, no egress | **Deferred** | Deployment requirement. Parsing currently runs in-process, so the gate reduces exposure rather than containing it. |
 | Per-organization configurable policy | **Deferred** | Follows tenancy work. |
 
 ### Normal and large-document lanes
@@ -201,7 +206,7 @@ strength:
 
 ## A4. Page-level provenance
 
-**Strengthens §6.3 (Source-Traceable Verification). Status: Designed.**
+**Strengthens §6.3 (Source-Traceable Verification). Status: Built.**
 
 Per-page extraction yields the page number for every field as a by-product.
 That satisfies v2 Table 7's "text evidence" tier — document, page, snippet —
@@ -242,7 +247,7 @@ computed by the gate anyway. It should be passed to the classifier as an input.
 
 ## A6. Truncation must be loud
 
-**Amends §7.2 (Deterministic validation). Status: Designed.**
+**Amends §7.2 (Deterministic validation). Status: Built.**
 
 Silent truncation of document text is prohibited. If content is cut before
 extraction, the affected fields are reported as unverifiable rather than
@@ -268,27 +273,32 @@ Recorded so the architecture diagram is not mistaken for the running system.
 | Worker dashboard, admin dashboard | Built |
 | Correction / confirmation drafting | Built |
 | Gmail live adapter | Built — P2 item, delivered early |
-| **Source evidence** | **Not built** — consumers exist end to end; no reader produces it |
-| **Document pre-processing** | **Not built** — superseded by A1 |
-| **Targeted retry with validation feedback** | **Not built** — current fallback is one-shot, not error-driven |
-| **`FIRST-PASS VALIDATED` / `RECOVERED` statuses** | **Not built** — all paths collapse to `NEEDS REVIEW` |
-| **Correct Extraction / Select Version actions** | **Not built** — review resolution is a note only |
-| Preflight security gate | Not built — specified in A3 |
+| Source evidence | Built — page, box and snippet from PDFs; line and page from text and OCR |
+| **Document pre-processing / full-page coverage** | **Not built** — superseded by A1; the current path reads whole documents |
+| Targeted retry with validation feedback | Built — failures are fed back, with OCR as the alternate route |
+| `FIRST-PASS VALIDATED` / `RECOVERED` statuses | Built — recorded per document with a retry trace |
+| **Correct Extraction** | Built — before/after kept, comparison re-run by the same rules |
+| **Select Version / Pairing action** | **Not built** — review resolution for pairing is a note only |
+| Preflight security gate | Built — see A3 |
 | Authentication, tenancy, RBAC | Deferred — P2 per §15 |
 
-### Known defect
+### Resolved defects
 
-The Gmail attachment **write** path builds its destination from the MIME
-filename without containment, so a traversal filename resolves outside the
-attachment root. The serve path is correctly defended; the write path was not
-given the same treatment. Fix is filename sanitization at A3.
+The Gmail attachment **write** path built its destination from the MIME
+filename without containment, so a traversal filename resolved outside the
+attachment root. Fixed by filename sanitization, with the serve path's
+existing containment left unchanged.
+
+The Supabase store returned comparisons under `evidence_json` while the worker
+dashboard reads `evidence`, so the seven-field table never rendered against
+the hosted store. Both stores now return the same shape.
 
 ## A8. Demo positioning
 
-Two rows of v2 Table 18 cannot currently be demonstrated:
+Of the two v2 Table 18 rows that could not be demonstrated:
 
 - *"Intentional extraction error → NEEDS REVIEW → correct extraction →
-  re-comparison"* — the Correct Extraction action does not exist.
+  re-comparison"* — now demonstrable; Correct Extraction is implemented.
 - *"Large multi-page document → relevant-section retrieval"* — superseded by
   A1; the honest claim is now full-page coverage behind a resource gate.
 

@@ -63,6 +63,11 @@ The architecture separates ingestion, case management, document understanding, i
 
 **Figure 1. Refined SDOC end-to-end workflow.**
 
+Solid boxes are implemented. The dashed box (Document
+Pre-processing) is designed but not built: see
+`SDOC_v2_Plan_Addons.md` A1, which replaces relevant-section
+retrieval with full-page coverage behind a resource gate.
+
 ```mermaid
 flowchart TD
     EMAIL["Incoming Email(s) / Mailbox<br>subject, body, attachments, thread"]
@@ -127,6 +132,8 @@ flowchart TD
     CORRECTION --> AUDIT
     QUEUE --> AUDIT
 
+    classDef planned stroke-dasharray: 6 4,stroke-width:2px
+    class PREP planned
     classDef pass fill:#d8f3e3,stroke:#1e7a4d,color:#0d3b25
     classDef hold fill:#fde8cf,stroke:#c2701c,color:#5a3406
     classDef bad fill:#fcdcdc,stroke:#c0392b,color:#5c1a14
