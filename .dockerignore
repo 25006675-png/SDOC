@@ -1,0 +1,21 @@
+# Secrets and local runtime state never go into the image.
+.env
+render.env
+Averis1am/data/
+**/__pycache__/
+*.py[cod]
+*.db
+*.log
+.pytest_cache/
+
+# Not needed to run the service.
+.git/
+.claude/
+demo-kit/
+archive/
+sdoc-hackathon-bundle
+sdoc-hackathon-docker/
+*.zip
+*.docx
+*.pdf
+!sdoc-landing/**
