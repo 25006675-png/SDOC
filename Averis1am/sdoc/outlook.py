@@ -103,7 +103,11 @@ class OutlookSource:
             "$select": "id,conversationId,subject,from,receivedDateTime,body,bodyPreview,hasAttachments,webLink,parentFolderId",
         }
         if self.query == "hasAttachments eq true":
-            params["$filter"] = "hasAttachments eq true"
+            # Graph rejects $filter + $orderby on messages as InefficientFilter
+            # (HTTP 400) unless the sort property also appears in the filter,
+            # and first. An always-true bound on receivedDateTime satisfies it.
+            params["$filter"] = ("receivedDateTime ge 1900-01-01T00:00:00Z "
+                                 "and hasAttachments eq true")
         listing = self._request("GET", "/me/messages", params=params)
         return [self._message_record(item) for item in listing.get("value", [])]
 

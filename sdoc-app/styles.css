@@ -538,3 +538,267 @@ main { min-width: 0; padding: 0 30px 34px; }
   .provider-row { grid-template-columns: 34px minmax(0, 1fr); }
   .provider-state, .provider-actions { grid-column: 2; }
 }
+
+/* ==========================================================================
+   Button system. One vocabulary for the whole app: three emphasis levels,
+   two sizes, one icon shape. The legacy class names are folded in here so
+   every existing screen renders identically without a markup sweep.
+   ========================================================================== */
+:root {
+  --btn-h: 34px;
+  --btn-h-sm: 28px;
+  --btn-radius: 7px;
+  --brand-strong: #183d2e;
+  --brand-strong-hover: #235740;
+  --line-strong: #c7d4ce;
+}
+.btn,
+.primary-button, .secondary-button, .primary-link, .secondary-link,
+.icon-button, .link-button, .refresh-button, .evidence-link {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: var(--btn-h); min-height: var(--btn-h); padding: 0 14px;
+  border: 1px solid transparent; border-radius: var(--btn-radius);
+  font-size: 13px; font-weight: 600; line-height: 1; letter-spacing: 0;
+  white-space: nowrap; text-decoration: none; cursor: pointer;
+  transition: background-color .15s ease-out, border-color .15s ease-out, color .15s ease-out;
+}
+.btn:disabled, .btn[aria-disabled="true"],
+.primary-button:disabled, .secondary-button:disabled, .refresh-button:disabled {
+  opacity: .5; cursor: not-allowed;
+}
+
+/* Primary: one per view, the action that moves the case forward. */
+.btn-primary, .primary-button, .primary-link {
+  background: var(--brand-strong); border-color: var(--brand-strong); color: #fff;
+}
+.btn-primary:hover:not(:disabled), .primary-button:hover:not(:disabled), .primary-link:hover {
+  background: var(--brand-strong-hover); border-color: var(--brand-strong-hover);
+}
+
+/* Secondary: supporting actions that still deserve a visible boundary. */
+.btn-secondary, .secondary-button, .secondary-link, .refresh-button, .icon-button {
+  background: var(--surface); border-color: var(--line-strong); color: var(--ink);
+}
+.btn-secondary:hover:not(:disabled), .secondary-button:hover:not(:disabled),
+.secondary-link:hover, .refresh-button:hover:not(:disabled), .icon-button:hover {
+  background: #f2f6f4; border-color: #aebfb7;
+}
+
+/* Ghost: low-priority and repeated actions (rows, toolbars). */
+.btn-ghost, .link-button, .evidence-link {
+  background: transparent; border-color: transparent; color: var(--ink-soft);
+}
+.btn-ghost:hover:not(:disabled), .link-button:hover, .evidence-link:hover {
+  background: #edf2f0; color: var(--ink);
+}
+
+.btn-sm, .compact-link, .link-button, .evidence-link {
+  height: var(--btn-h-sm); min-height: var(--btn-h-sm); padding: 0 10px; font-size: 12px;
+}
+.btn-icon, .icon-button { width: var(--btn-h); padding: 0; font-size: 17px; }
+.btn-sm.btn-icon { width: var(--btn-h-sm); font-size: 16px; }
+.primary-link { margin-top: 0; }
+.link-button { margin-left: 0; }
+
+/* ==========================================================================
+   Field review. A persistent split: the field list on one side, the source
+   evidence for the selected field on the other. The split engages when the
+   detail panel has room for both; narrower, the evidence sits directly
+   below the list, still populated, still visible without a click.
+   ========================================================================== */
+.review { container-type: inline-size; }
+.review-heading {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap; margin-bottom: 12px;
+}
+.review-heading h3 { margin: 0; font-size: 14px; }
+.review-summary { margin: 0; font-size: 12.5px; font-weight: 650; color: var(--orange); }
+.review-summary.is-ok { color: var(--green); }
+.review-grid { display: grid; gap: 16px; }
+@container (min-width: 720px) {
+  .review-grid { grid-template-columns: minmax(0, 1fr) minmax(300px, .95fr); align-items: start; }
+  .evidence-pane { position: sticky; top: 16px; }
+}
+
+.field-list { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--surface); }
+.field-list-head,
+.field-row {
+  display: grid; align-items: center; gap: 12px;
+  grid-template-columns: minmax(92px, .75fr) minmax(0, 1fr) minmax(0, 1fr) minmax(86px, auto);
+  padding: 11px 14px;
+}
+.field-list-head {
+  background: #f2f6f4; border-bottom: 1px solid var(--line);
+  color: var(--muted); font-size: 11px; font-weight: 650;
+}
+.field-row {
+  width: 100%; border: 0; border-bottom: 1px solid var(--line);
+  background: var(--surface); color: var(--ink); text-align: left;
+  font-size: 12.5px; line-height: 1.4; cursor: pointer;
+  transition: background-color .15s ease-out;
+}
+.field-row:last-child { border-bottom: 0; }
+.field-row:hover { background: #f6f9f8; }
+.field-row.is-diff { background: #fff8f0; }
+.field-row.is-diff:hover { background: #fdf0e1; }
+.field-row[aria-current="true"] { background: #e9f3ed; box-shadow: inset 0 0 0 1.5px #7fb398; }
+.field-row.is-diff[aria-current="true"] { background: #fdeede; box-shadow: inset 0 0 0 1.5px #d49a63; }
+.field-row:focus-visible { outline-offset: -3px; }
+.field-name { color: var(--ink-soft); font-weight: 600; }
+.field-value { overflow-wrap: anywhere; }
+.field-value.is-missing, .evidence-value.is-missing { color: var(--muted); font-style: italic; font-weight: 500; }
+.field-result { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+
+.field-status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 650; white-space: nowrap; }
+.field-status-glyph {
+  display: grid; place-items: center; width: 17px; height: 17px; flex: none;
+  border-radius: 50%; font-size: 10px; font-weight: 800; line-height: 1;
+}
+.field-status.is-match { color: var(--green); }
+.field-status.is-match .field-status-glyph { background: var(--green-bg); }
+.field-status.is-diff { color: var(--orange); }
+.field-status.is-diff .field-status-glyph { background: var(--orange-bg); }
+.field-status.is-review { color: var(--purple); }
+.field-status.is-review .field-status-glyph { background: var(--purple-bg); }
+
+/* Evidence pane */
+.evidence-pane { border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.evidence-pane-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 13px 16px; border-bottom: 1px solid var(--line);
+}
+.evidence-pane-title { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.evidence-pane-title h3 { margin: 0; font-size: 14px; }
+.evidence-sides { display: grid; gap: 16px; padding: 14px 16px 16px; }
+.evidence-side-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 4px; }
+.evidence-side-head strong { font-size: 11.5px; font-weight: 650; color: var(--ink-soft); }
+.evidence-side-head span { font-size: 11px; color: var(--muted); }
+.evidence-value { margin: 0 0 8px; font-size: 13.5px; font-weight: 650; color: var(--ink); overflow-wrap: anywhere; }
+.evidence-correction { margin: 0; padding: 10px 16px; border-top: 1px solid var(--line); font-size: 12px; color: #7a5a17; background: #fdf8ec; }
+.evidence-pane-foot { display: flex; gap: 8px; padding: 11px 16px; border-top: 1px solid var(--line); }
+.evidence-pane .correction-form {
+  display: grid; gap: 8px; padding: 0 16px 14px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+}
+.evidence-pane .correction-form select,
+.evidence-pane .correction-form input {
+  min-height: 34px; padding: 0 10px; border: 1px solid var(--line-strong);
+  border-radius: var(--btn-radius); background: var(--surface); color: var(--ink); font-size: 12.5px;
+}
+.evidence-pane .correction-form .btn { justify-self: start; }
+.evidence-pane .correction-form .inline-message { grid-column: 1 / -1; margin: 0; font-size: 12px; color: var(--red); }
+.evidence-pane .correction-form .inline-message:empty { display: none; }
+
+/* Segmented control for the evidence view */
+.segmented { display: inline-flex; flex: none; padding: 2px; border-radius: 8px; background: #edf2f0; }
+.segmented button {
+  height: 26px; padding: 0 11px; border: 0; border-radius: 6px;
+  background: transparent; color: var(--ink-soft); font-size: 12px; font-weight: 600;
+  transition: background-color .15s ease-out, color .15s ease-out;
+}
+.segmented button:hover { color: var(--ink); }
+.segmented button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px rgba(16, 32, 40, .14); }
+
+/* Document visuals: a crop of the exact region, or the whole page */
+.doc-frame {
+  position: relative; overflow: hidden; border: 1px solid var(--line);
+  border-radius: 7px; background: #fff;
+}
+.doc-frame img { display: block; transition: opacity .2s ease-out; }
+.doc-frame.is-crop img { position: absolute; max-width: none; height: auto; }
+.doc-frame.is-page img { width: 100%; height: auto; }
+.doc-frame.is-loading {
+  min-height: 64px;
+  background: linear-gradient(90deg, #eef2f1 25%, #f7f9f8 50%, #eef2f1 75%);
+  background-size: 200% 100%; animation: skeleton 1.2s linear infinite;
+}
+.doc-frame.is-loading img { opacity: 0; }
+.doc-highlight {
+  position: absolute; pointer-events: none; border-radius: 3px;
+  border: 2px solid #d9761a; background: rgba(217, 118, 26, .13);
+}
+.doc-snippet {
+  margin: 0; padding: 10px 12px; border-radius: 7px; background: #f3f6f5;
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 12px;
+  line-height: 1.5; color: var(--ink-soft); overflow-wrap: anywhere;
+}
+.doc-empty { margin: 0; padding: 12px; border-radius: 7px; background: #f6f8f7; color: var(--muted); font-size: 12px; }
+
+/* Attachment preview as a side sheet */
+.doc-preview {
+  width: min(680px, 94vw); height: 100vh; max-height: 100vh; max-width: none;
+  margin: 0 0 0 auto; padding: 0; border: 0; border-left: 1px solid var(--line);
+  background: var(--surface); color: var(--ink);
+  box-shadow: -8px 0 24px rgba(16, 32, 40, .12);
+}
+.doc-preview::backdrop { background: rgba(10, 23, 32, .38); }
+.doc-preview[open] { display: flex; flex-direction: column; animation: sheet-in .22s cubic-bezier(.22, 1, .36, 1); }
+.doc-preview-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 14px 18px; border-bottom: 1px solid var(--line);
+}
+.doc-preview-title { margin: 0; font-size: 15px; overflow-wrap: anywhere; }
+.doc-preview-actions { display: flex; gap: 6px; flex: none; }
+.doc-preview-body { flex: 1; overflow: auto; padding: 18px; background: #eef2f0; }
+.doc-text {
+  margin: 0; padding: 16px; border-radius: 7px; background: #fff;
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 12.5px;
+  line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere;
+}
+@keyframes sheet-in { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* Detail header: reference, state and the next action in one row */
+.detail-title { min-width: 0; }
+.detail-heading { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.detail-heading h2 { margin: 0; }
+.detail-head .btn-primary { flex: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .doc-frame.is-loading, .doc-preview[open] { animation: none; }
+  .btn, .field-row, .segmented button, .doc-frame img { transition: none; }
+}
+
+@container (min-width: 720px) and (max-width: 1080px) {
+  .field-list-head, .field-row { grid-template-columns: minmax(78px, .7fr) minmax(0, 1fr) minmax(0, 1fr) minmax(78px, auto); gap: 10px; padding: 10px 12px; }
+}
+
+/* A long provider error must not push the strip off the page. */
+.mailbox-strip { overflow: hidden; }
+.mailbox-strip .mailbox-hint {
+  min-width: 0; flex: 1 1 200px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.mailbox-strip.has-error .mailbox-hint { color: var(--red); }
+
+/* aspect-ratio sizes the border box under the global border-box rule, while
+   percentage offsets resolve against the padding box. The 1px border then
+   shortens the box by 2px, and a crop offset of several hundred percent
+   magnifies that into a visibly misplaced highlight. Content-box makes the
+   ratio and the offsets share one reference. */
+.doc-frame { box-sizing: content-box; }
+
+/* The hidden attribute loses to an explicit display value. */
+.evidence-pane .correction-form[hidden] { display: none; }
+
+/* In the split the list is an overview: one line per value, full text in
+   the evidence pane and on hover. */
+@container (min-width: 720px) {
+  .field-value { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .field-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}
+
+/* Grid items default to min-width: auto, so the widest unbreakable string in
+   any section (an email id, a URL) sets the column and pushes the whole case
+   past the viewport. An explicit minmax(0, 1fr) track keeps the column at the
+   panel's width; long content wraps inside its own section instead. */
+.detail-body { grid-template-columns: minmax(0, 1fr); }
+.detail-body > * { min-width: 0; }
+
+/* The review form collapsed only at a viewport breakpoint, but its width is
+   set by the detail panel. Wrapping by content keeps the note field usable
+   and moves the button to its own line when the panel is narrow. */
+.review-form { display: flex; flex-wrap: wrap; gap: 9px; }
+.review-form input { min-width: 0; min-height: var(--btn-h); }
+.review-form input[name="actor"] { flex: 1 1 180px; }
+.review-form input[name="note"] { flex: 2 1 240px; }
+.review-form button { flex: none; }

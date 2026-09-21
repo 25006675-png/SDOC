@@ -21,6 +21,8 @@ import os
 import zipfile
 from pathlib import Path
 
+from .pdfium_guard import PDFIUM_LOCK
+
 # Reasons are stable identifiers; they surface in the queue and in analytics.
 OVERSIZE = "attachment_too_large"
 TYPE_MISMATCH = "attachment_type_mismatch"
@@ -110,18 +112,20 @@ def _pdf_pages(data):
         import pypdfium2 as pdfium
     except ImportError:
         return None, None
-    try:
-        pdf = pdfium.PdfDocument(data)
-    except Exception as exc:
-        if "password" in str(exc).lower() or "encrypt" in str(exc).lower():
-            return None, ENCRYPTED
-        return None, MALFORMED
-    try:
-        return len(pdf), None
-    finally:
-        with_close = getattr(pdf, "close", None)
-        if with_close:
-            with_close()
+    # pdfium is not thread-safe; see pdfium_guard.
+    with PDFIUM_LOCK:
+        try:
+            pdf = pdfium.PdfDocument(data)
+        except Exception as exc:
+            if "password" in str(exc).lower() or "encrypt" in str(exc).lower():
+                return None, ENCRYPTED
+            return None, MALFORMED
+        try:
+            return len(pdf), None
+        finally:
+            with_close = getattr(pdf, "close", None)
+            if with_close:
+                with_close()
 
 
 def _archive_expansion(data, cfg):

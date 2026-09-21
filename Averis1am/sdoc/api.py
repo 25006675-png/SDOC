@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+from functools import lru_cache
 import base64
 import hashlib
 import hmac
@@ -24,6 +25,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import auth
+from .pdfium_guard import PDFIUM_LOCK
 from .casework import CASE_STATES, CaseStore
 from .drafting import draft_case_message
 from .mailbox import (
@@ -82,9 +84,11 @@ def read_role(request: Request):
     return identity["role"] if identity else None
 
 
-def login_page(error="", next_path="/app/"):
-    if not next_path.startswith("/app"):
-        next_path = "/app/"
+def login_page(error="", next_path=""):
+    # Empty means "send me to my own home": the sign-in handler then picks the
+    # page for the role. Anything else must stay inside the app.
+    if next_path and not next_path.startswith("/app"):
+        next_path = ""
     message = f'<p class="error">{html.escape(error)}</p>' if error else ""
     safe_next = html.escape(next_path, quote=True)
     return f"""
@@ -107,7 +111,7 @@ def login_page(error="", next_path="/app/"):
     </head>
     <body><main>
       <h1>Sign in to SDOC</h1>
-      <p>Use the team passcode. Admin passcodes open analytics and mailbox controls; worker passcodes open the case queue.</p>
+      <p>Workers open the case queue. Administrators also see analytics and mailbox connections.</p>
       {message}
       <form method="post" action="/login">
         <label>Username<input name="username" type="text" autocomplete="username" autofocus required></label>
@@ -184,24 +188,37 @@ def render_pdf_page(file_path, page, scale):
     -> (png_bytes, page_width_pt, page_height_pt); the point size lets a
     viewer map stored bounding boxes onto the image without guessing.
     Raises ValueError for a non-PDF and IndexError for a page out of range.
+
+    Cached by path, modification time, page and scale: the evidence pane asks
+    for the same page on every case open, and a changed file re-renders.
     """
     if file_path.suffix.lower() != ".pdf":
         raise ValueError("page rendering is only available for PDF documents")
+    stat = file_path.stat()
+    return _render_pdf_page(str(file_path), stat.st_mtime_ns, page, float(scale))
+
+
+@lru_cache(maxsize=64)
+def _render_pdf_page(path, mtime_ns, page, scale):
     import pypdfium2 as pdfium
 
-    try:
-        pdf = pdfium.PdfDocument(str(file_path))
-    except Exception as exc:
-        raise ValueError("document could not be opened") from exc
-    try:
-        if page > len(pdf):
-            raise IndexError(page)
-        sheet = pdf[page - 1]
-        width, height = sheet.get_width(), sheet.get_height()
-        buffer = io.BytesIO()
-        sheet.render(scale=scale).to_pil().save(buffer, format="PNG")
-    finally:
-        pdf.close()
+    # pdfium is not thread-safe; see pdfium_guard.
+    with PDFIUM_LOCK:
+        try:
+            pdf = pdfium.PdfDocument(path)
+        except Exception as exc:
+            raise ValueError("document could not be opened") from exc
+        try:
+            if page > len(pdf):
+                raise IndexError(page)
+            sheet = pdf[page - 1]
+            width, height = sheet.get_width(), sheet.get_height()
+            image = sheet.render(scale=scale).to_pil()
+        finally:
+            pdf.close()
+    # PNG encoding is pure Python and does not need the lock.
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
     return buffer.getvalue(), round(width, 2), round(height, 2)
 
 
@@ -330,7 +347,7 @@ def create_app(store=None, start_scheduler=True):
     def login(request: Request):
         if not auth_enabled():
             return RedirectResponse("/app/", status_code=303)
-        return HTMLResponse(login_page(next_path=request.query_params.get("next", "/app/")))
+        return HTMLResponse(login_page(next_path=request.query_params.get("next", "")))
 
     @app.post("/login")
     async def login_submit(request: Request):

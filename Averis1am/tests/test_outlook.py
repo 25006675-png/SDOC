@@ -57,7 +57,13 @@ class TestOutlookSource(unittest.TestCase):
             self.assertEqual(emails[0]["attachments"], ["attachments/outlook/m_123/x_SI.txt"])
             self.assertEqual(source.read_bytes("attachments/outlook/m_123/x_SI.txt"), b"SHIPPING INSTRUCTION")
             self.assertEqual((Path(tmp) / "attachments" / "outlook" / "m_123" / "x_SI.txt").read_bytes(), b"SHIPPING INSTRUCTION")
-            self.assertTrue(any("%24filter=hasAttachments" in url for url in calls))
+            # Graph returns 400 InefficientFilter for $filter + $orderby on
+        # messages unless the sort property leads the filter.
+        listing = next(url for url in calls if "%24filter=" in url)
+        filter_value = listing.split("%24filter=", 1)[1].split("&", 1)[0]
+        self.assertTrue(filter_value.startswith("receivedDateTime"), filter_value)
+        self.assertIn("hasAttachments", filter_value)
+        self.assertIn("%24orderby=receivedDateTime", listing)
 
 
 class TestOutlookConfig(unittest.TestCase):

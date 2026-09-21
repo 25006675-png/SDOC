@@ -348,3 +348,16 @@ class TestAccountAuth(unittest.TestCase):
     def test_signing_in_from_a_slashless_url_lands_somewhere_real(self):
         response = self._login("worker", "worker-pass", next_path="/app")
         self.assertEqual(response.headers["location"], "/app/")
+
+    def test_plain_sign_in_lands_each_role_on_its_own_home(self):
+        # The login form posts an empty next when opened directly, so the
+        # role decides: an admin must not land on the worker queue.
+        admin = self._login("admin", "admin-pass", next_path="")
+        self.assertEqual(admin.headers["location"], "/app/admin.html")
+        self.client.post("/logout", follow_redirects=False)
+        worker = self._login("worker", "worker-pass", next_path="")
+        self.assertEqual(worker.headers["location"], "/app/")
+
+    def test_login_page_does_not_force_the_worker_queue(self):
+        page = self.client.get("/login").text
+        self.assertIn('name="next" type="hidden" value=""', page)

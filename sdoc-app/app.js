@@ -26,6 +26,7 @@
     let identity = null;
     try { identity = await (await fetch('/api/auth/status')).json(); } catch (_) { return; }
     if (!identity || !identity.auth_enabled || !identity.username) return;
+    state.identity = identity;
     const box = document.getElementById('sidebar-user');
     if (!box) return;
     box.hidden = false;
@@ -106,6 +107,17 @@
     $('store-label').textContent = ok ? store : 'Retry with refresh';
   }
 
+  function summariseError(text) {
+    // Provider errors arrive as full request URLs; a worker needs the gist.
+    const raw = String(text);
+    const code = raw.match(/\b([45]\d\d)\b/);
+    const reason = raw.match(/Bad Request|Unauthorized|Forbidden|Not Found|Too Many Requests|Server Error/);
+    if (code) {
+      return `Last sync failed (${code[1]}${reason ? ' ' + reason[0] : ''}). An administrator can reconnect the mailbox.`;
+    }
+    return raw.split(/\r?\n/)[0].slice(0, 140);
+  }
+
   function renderMailbox(mailbox) {
     const providerName = mailbox.provider === 'outlook' ? 'Outlook' : mailbox.provider === 'gmail' ? 'Gmail' : 'Mailbox';
     state.mailbox = mailbox;
@@ -115,7 +127,11 @@
     $('mailbox-title').textContent = ready
       ? `${providerName} connected${mailbox.account ? `: ${mailbox.account}` : ''}`
       : mailbox.configured ? `${providerName} ready to connect` : `${providerName} needs OAuth settings`;
-    $('mailbox-detail').textContent = mailbox.last_error || mailbox.next_action;
+    const detail = $('mailbox-detail');
+    const error = mailbox.last_error ? summariseError(mailbox.last_error) : '';
+    detail.textContent = error || mailbox.next_action || '';
+    detail.title = mailbox.last_error || '';
+    detail.closest('.mailbox-strip')?.classList.toggle('has-error', Boolean(error));
     $('mailbox-query').textContent = mailbox.query ? `Query: ${mailbox.query}` : 'No query active';
     $('mailbox-sync').textContent = mailbox.last_sync_at
       ? `Last sync ${formatTime(mailbox.last_sync_at)}. ${mailbox.processed || 0} processed.`
@@ -347,34 +363,52 @@
     return '';
   }
 
-  function evidenceViewerUrl(field, side, source, fallbackPath) {
-    const path = source?.document || fallbackPath;
-    if (!path) return '';
-    const params = new URLSearchParams({ path, field: fieldLabel(field), side });
-    if (source?.page) params.set('page', source.page);
-    if (source?.bbox) params.set('bbox', source.bbox.join(','));
-    if (source?.source_text) params.set('text', source.source_text);
-    const where = sourceLocation(source);
-    if (where) params.set('where', where);
-    return `/app/evidence.html?${params.toString()}`;
+  function ensurePreviewSheet() {
+    let sheet = document.getElementById('doc-preview');
+    if (sheet) return sheet;
+    sheet = element('dialog', 'doc-preview');
+    sheet.id = 'doc-preview';
+    sheet.setAttribute('aria-labelledby', 'doc-preview-title');
+    const head = element('header', 'doc-preview-head');
+    const title = element('h2', 'doc-preview-title');
+    title.id = 'doc-preview-title';
+    const actions = element('div', 'doc-preview-actions');
+    const download = element('a', 'btn btn-secondary btn-sm doc-preview-download', 'Download');
+    download.setAttribute('download', '');
+    const close = element('button', 'btn btn-ghost btn-sm btn-icon', '×');
+    close.type = 'button';
+    close.setAttribute('aria-label', 'Close preview');
+    close.addEventListener('click', () => sheet.close());
+    actions.append(download, close);
+    head.append(title, actions);
+    sheet.append(head, element('div', 'doc-preview-body'));
+    // A click on the backdrop lands on the dialog element itself.
+    sheet.addEventListener('click', event => { if (event.target === sheet) sheet.close(); });
+    document.body.append(sheet);
+    return sheet;
   }
 
-  function evidenceActions(field, fieldEvidence = {}, comparisonEvidence = {}) {
-    const actions = element('div', 'evidence-actions');
-    [
-      ['SI evidence', 'SI', fieldEvidence.si_source, comparisonEvidence.si_doc],
-      ['BL evidence', 'BL', fieldEvidence.bl_source, comparisonEvidence.bl_doc]
-    ].forEach(([label, side, source, fallbackPath]) => {
-      const href = evidenceViewerUrl(field, side, source, fallbackPath);
-      if (!href) return;
-      const link = element('a', 'evidence-link', label);
-      link.href = href;
-      link.target = '_blank';
-      link.rel = 'noreferrer';
-      link.title = source?.bbox ? 'Open exact source evidence.' : 'Open source document. Exact box is not available for this extraction.';
-      actions.append(link);
-    });
-    return actions;
+  async function previewDocument(path) {
+    const sheet = ensurePreviewSheet();
+    const name = displayDocumentName({ source_path: path });
+    sheet.querySelector('.doc-preview-title').textContent = name;
+    sheet.querySelector('.doc-preview-download').href = attachmentUrl('download', path);
+    const body = sheet.querySelector('.doc-preview-body');
+    if (/\.pdf$/i.test(path)) {
+      body.replaceChildren(documentVisual({ document: path, page: 1 }, 'page', name));
+    } else if (/\.(txt|text|csv|md)$/i.test(path)) {
+      body.replaceChildren(element('p', 'doc-empty', 'Loading…'));
+      try {
+        const response = await fetch(attachmentUrl('preview', path));
+        if (!response.ok) throw new Error(`Preview failed (${response.status})`);
+        body.replaceChildren(element('pre', 'doc-text', (await response.text()).slice(0, 20000)));
+      } catch (error) {
+        body.replaceChildren(element('p', 'doc-empty', error.message));
+      }
+    } else {
+      body.replaceChildren(element('p', 'doc-empty', 'This file type cannot be previewed here. Download it to open.'));
+    }
+    if (!sheet.open) sheet.showModal();
   }
 
   function renderAttachmentList(paths, evidence = {}) {
@@ -389,11 +423,10 @@
         element('span', '', attachmentRole(path, evidence))
       );
       const actions = element('div', 'attachment-actions');
-      const preview = element('a', 'secondary-link compact-link', 'Preview');
-      preview.href = `/app/evidence.html?${new URLSearchParams({ path }).toString()}`;
-      preview.target = '_blank';
-      preview.rel = 'noreferrer';
-      const download = element('a', 'secondary-link compact-link', 'Download');
+      const preview = element('button', 'btn btn-ghost btn-sm', 'Preview');
+      preview.type = 'button';
+      preview.addEventListener('click', () => previewDocument(path));
+      const download = element('a', 'btn btn-ghost btn-sm', 'Download');
       download.href = attachmentUrl('download', path);
       download.setAttribute('download', '');
       actions.append(preview, download);
@@ -419,12 +452,39 @@
     }
   }
 
+  function prefersReducedMotion() {
+    return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  }
+
+  function nextAction(data) {
+    const openTask = data.review_tasks?.find(task => task.status === 'OPEN');
+    if (openTask) return { label: 'Resolve review', target: '.review-box' };
+    if (canPrepareExternalMessage(data.state)) {
+      return { label: data.state === 'VERIFIED' ? 'Prepare confirmation' : 'Prepare message', target: '.draft-box' };
+    }
+    return null;
+  }
+
   function renderDetail(data) {
     const detail = $('case-detail');
     const head = element('header', 'detail-head');
-    const title = element('div');
-    title.append(element('h2', '', data.shipment_reference), element('p', '', actionCopy(data.state)));
-    head.append(title, stateBadge(data.state));
+    const title = element('div', 'detail-title');
+    const heading = element('div', 'detail-heading');
+    heading.append(element('h2', '', data.shipment_reference), stateBadge(data.state));
+    title.append(heading, element('p', '', actionCopy(data.state)));
+    head.append(title);
+    const next = nextAction(data);
+    if (next) {
+      const button = element('button', 'btn btn-primary', next.label);
+      button.type = 'button';
+      button.addEventListener('click', () => {
+        const target = detail.querySelector(next.target);
+        if (!target) return;
+        target.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'start' });
+        target.querySelector('input, textarea, select, button')?.focus({ preventScroll: true });
+      });
+      head.append(button);
+    }
     const body = element('div', 'detail-body');
     const latest = data.comparisons?.at(-1);
     body.append(renderComparison(latest, data.state, data.case_id));
@@ -505,31 +565,37 @@
     return '';
   }
 
-  function correctionRow(caseId, field, evidence) {
-    const row = element('tr', 'correction-row');
-    row.hidden = true;
-    const cell = element('td');
-    cell.colSpan = 5;
+  function correctionForm(caseId, field, evidence) {
     const form = element('form', 'correction-form');
     const side = document.createElement('select');
-    [['si', 'Shipping instruction'], ['bl', 'Draft bill of lading']].forEach(([value, label]) => {
+    side.setAttribute('aria-label', 'Document to correct');
+    SIDES.forEach(([value, label]) => {
       const option = document.createElement('option');
       option.value = value; option.textContent = label;
       side.append(option);
     });
+    // Start on the side most likely to be wrong: the one that differs from
+    // the other, or whichever value is missing.
+    if (evidence.si != null && evidence.bl == null) side.value = 'bl';
     const value = element('input');
     value.required = true;
-    value.placeholder = 'Corrected value, exactly as printed';
-    value.value = evidence.si ?? '';
+    value.setAttribute('aria-label', 'Corrected value');
+    value.placeholder = 'Value exactly as printed';
+    value.value = (side.value === 'si' ? evidence.si : evidence.bl) ?? '';
     side.addEventListener('change', () => { value.value = (side.value === 'si' ? evidence.si : evidence.bl) ?? ''; });
     const actor = element('input');
-    actor.type = 'email'; actor.required = true; actor.placeholder = 'Your email';
+    actor.required = true;
+    actor.setAttribute('aria-label', 'Corrected by');
+    actor.placeholder = 'Your name';
+    actor.value = state.identity?.display_name || state.identity?.username || '';
     const note = element('input');
-    note.placeholder = 'Why the original was wrong (optional)';
-    const submit = element('button', 'primary-button', 'Save and re-compare');
+    note.setAttribute('aria-label', 'Reason for correction');
+    note.placeholder = 'Reason (optional)';
+    const submit = element('button', 'btn btn-primary btn-sm', 'Save and re-compare');
     submit.type = 'submit';
     const message = element('p', 'inline-message', '');
-    form.append(side, value, actor, note, submit);
+    message.setAttribute('role', 'status');
+    form.append(side, value, actor, note, submit, message);
     form.addEventListener('submit', async event => {
       event.preventDefault();
       submit.disabled = true; submit.textContent = 'Saving…';
@@ -547,12 +613,269 @@
         submit.disabled = false; submit.textContent = 'Save and re-compare';
       }
     });
-    cell.append(form, message);
-    row.append(cell);
-    return row;
+    return form;
+  }
+
+  const SIDES = [['si', 'Shipping instruction'], ['bl', 'Draft bill of lading']];
+
+  function fieldStatus(evidence) {
+    if (evidence.match === true) return { word: 'Match', glyph: '✓', tone: 'match' };
+    if (evidence.match === false) return { word: 'Different', glyph: '≠', tone: 'diff' };
+    return { word: 'Review', glyph: '?', tone: 'review' };
+  }
+
+  function statusChip(evidence) {
+    // Glyph plus word: the state never rests on colour alone.
+    const status = fieldStatus(evidence);
+    const chip = element('span', `field-status is-${status.tone}`);
+    const glyph = element('span', 'field-status-glyph', status.glyph);
+    glyph.setAttribute('aria-hidden', 'true');
+    chip.append(glyph, document.createTextNode(status.word));
+    return chip;
+  }
+
+  function pct(value) { return `${(value * 100).toFixed(3)}%`; }
+
+  function pageImageUrl(path, page) {
+    return `/api/attachments/page?${new URLSearchParams({ path, page: String(page || 1), scale: '3' })}`;
+  }
+
+  function cropRegion(box, width, height) {
+    // Tight enough that the value is the largest thing in the frame, with a
+    // minimum width so a short value is not magnified into a blur.
+    const padX = 10, padY = 12, minWidth = Math.min(width, 200);
+    let x0 = box[0] - padX, x1 = box[2] + padX;
+    if (x1 - x0 < minWidth) {
+      const centre = (box[0] + box[2]) / 2;
+      x0 = centre - minWidth / 2; x1 = centre + minWidth / 2;
+    }
+    if (x0 < 0) { x1 -= x0; x0 = 0; }
+    if (x1 > width) { x0 = Math.max(0, x0 - (x1 - width)); x1 = width; }
+    return [x0, Math.max(0, box[1] - padY), x1, Math.min(height, box[3] + padY)];
+  }
+
+  function padBox(box, width, height, pad = 2.5) {
+    return [Math.max(0, box[0] - pad), Math.max(0, box[1] - pad),
+            Math.min(width, box[2] + pad), Math.min(height, box[3] + pad)];
+  }
+
+  function highlightBox(left, top, width, height) {
+    const mark = element('span', 'doc-highlight');
+    mark.setAttribute('aria-hidden', 'true');
+    Object.assign(mark.style, { left: pct(left), top: pct(top), width: pct(width), height: pct(height) });
+    return mark;
+  }
+
+  function documentVisual(source, mode, label) {
+    // Positions are PDF points with a top-left origin; expressing them as a
+    // share of the rendered region keeps the highlight exact at any width.
+    const wrap = element('div', 'doc-visual');
+    const path = source?.document;
+    if (!path) {
+      wrap.append(element('p', 'doc-empty', 'No source location was recorded for this value.'));
+      return wrap;
+    }
+    if (!/\.pdf$/i.test(path)) {
+      wrap.append(source.source_text
+        ? element('blockquote', 'doc-snippet', source.source_text)
+        : element('p', 'doc-empty', 'Page images are available for PDF documents only.'));
+      return wrap;
+    }
+    const width = Number(source.page_width), height = Number(source.page_height);
+    const box = Array.isArray(source.bbox) && source.bbox.length === 4 ? source.bbox.map(Number) : null;
+    const placeable = Boolean(box) && width > 0 && height > 0;
+    const crop = mode === 'field' && placeable;
+    const frame = element('div', `doc-frame ${crop ? 'is-crop' : 'is-page'} is-loading`);
+    const img = new Image();
+    img.decoding = 'async';
+    img.alt = `${label}, page ${source.page || 1}`;
+    img.addEventListener('load', () => frame.classList.remove('is-loading'));
+    img.addEventListener('error', () => {
+      frame.className = 'doc-frame';
+      frame.style.aspectRatio = '';
+      frame.replaceChildren(element('p', 'doc-empty', 'This page could not be rendered.'));
+    });
+    const mark = placeable ? padBox(box, width, height) : null;
+    if (crop) {
+      const [x0, y0, x1, y1] = cropRegion(mark, width, height);
+      const rw = x1 - x0, rh = y1 - y0;
+      frame.style.aspectRatio = `${rw} / ${rh}`;
+      Object.assign(img.style, { width: pct(width / rw), left: pct(-x0 / rw), top: pct(-y0 / rh) });
+      frame.append(img, highlightBox((mark[0] - x0) / rw, (mark[1] - y0) / rh,
+        (mark[2] - mark[0]) / rw, (mark[3] - mark[1]) / rh));
+    } else {
+      if (width > 0 && height > 0) frame.style.aspectRatio = `${width} / ${height}`;
+      frame.append(img);
+      if (mark) {
+        frame.append(highlightBox(mark[0] / width, mark[1] / height,
+          (mark[2] - mark[0]) / width, (mark[3] - mark[1]) / height));
+      }
+    }
+    img.src = pageImageUrl(path, source.page);
+    wrap.append(frame);
+    return wrap;
+  }
+
+  function sourceFor(evidence, side, comparisonEvidence) {
+    const recorded = evidence[`${side}_source`] || {};
+    const fallback = comparisonEvidence[`${side}_doc`];
+    return recorded.document || !fallback ? recorded : { ...recorded, document: fallback };
+  }
+
+  function renderEvidencePane(pane, context) {
+    const { field, evidence, comparisonEvidence, caseId } = context;
+    const head = element('header', 'evidence-pane-head');
+    const title = element('div', 'evidence-pane-title');
+    title.append(element('h3', '', fieldLabel(field)), statusChip(evidence));
+    head.append(title);
+
+    const hasPdf = SIDES.some(([side]) => /\.pdf$/i.test(sourceFor(evidence, side, comparisonEvidence).document || ''));
+    if (hasPdf) {
+      const toggle = element('div', 'segmented');
+      toggle.setAttribute('role', 'group');
+      toggle.setAttribute('aria-label', 'Evidence view');
+      [['field', 'Field'], ['page', 'Full page']].forEach(([mode, label]) => {
+        const button = element('button', '', label);
+        button.type = 'button';
+        button.setAttribute('aria-pressed', String(context.mode === mode));
+        button.addEventListener('click', () => {
+          if (context.mode === mode) return;
+          context.mode = mode;
+          renderEvidencePane(pane, context);
+        });
+        toggle.append(button);
+      });
+      head.append(toggle);
+    }
+
+    const sides = element('div', 'evidence-sides');
+    SIDES.forEach(([side, label]) => {
+      const source = sourceFor(evidence, side, comparisonEvidence);
+      const block = element('section', 'evidence-side');
+      const sideHead = element('div', 'evidence-side-head');
+      sideHead.append(element('strong', '', label));
+      const where = sourceLocation(source);
+      if (where) sideHead.append(element('span', '', where));
+      const value = element('p', 'evidence-value', evidence[side] ?? 'Not found in this document');
+      if (evidence[side] == null) value.classList.add('is-missing');
+      block.append(sideHead, value, documentVisual(source, context.mode, label));
+      sides.append(block);
+    });
+
+    const parts = [head, sides];
+    if (evidence.corrected) {
+      parts.push(element('p', 'evidence-correction',
+        `Corrected from "${evidence.corrected.from || 'blank'}" by ${evidence.corrected.actor || 'a reviewer'}.`));
+    }
+    const foot = element('footer', 'evidence-pane-foot');
+    const correct = element('button', 'btn btn-secondary btn-sm', 'Correct value');
+    correct.type = 'button';
+    correct.setAttribute('aria-expanded', 'false');
+    const form = correctionForm(caseId, field, evidence);
+    form.hidden = true;
+    correct.addEventListener('click', () => {
+      form.hidden = !form.hidden;
+      correct.setAttribute('aria-expanded', String(!form.hidden));
+      if (!form.hidden) form.querySelector('input')?.focus();
+    });
+    foot.append(correct);
+    parts.push(foot, form);
+    pane.replaceChildren(...parts);
+  }
+
+  function renderFieldReview(comparison, caseId) {
+    const fields = comparison.evidence.fields;
+    const order = comparedFields(fields);
+    const section = element('section', 'detail-section review');
+
+    const differing = order.filter(field => fields[field]?.match === false).length;
+    const pending = order.filter(field => fields[field]?.match == null).length;
+    const heading = element('div', 'review-heading');
+    heading.append(
+      element('h3', '', 'Field comparison'),
+      element('p', differing || pending ? 'review-summary' : 'review-summary is-ok',
+        differing ? `${differing} of ${order.length} fields differ`
+          : pending ? `${pending} of ${order.length} fields need review`
+            : `All ${order.length} fields match`)
+    );
+    section.append(heading);
+
+    const grid = element('div', 'review-grid');
+    const list = element('div', 'field-list');
+    list.setAttribute('role', 'group');
+    list.setAttribute('aria-label', 'Compared fields. Use the arrow keys to move between fields.');
+    const listHead = element('div', 'field-list-head');
+    listHead.setAttribute('aria-hidden', 'true');
+    ['Field', 'Shipping instruction', 'Draft bill of lading', 'Result']
+      .forEach(label => listHead.append(element('span', '', label)));
+    list.append(listHead);
+
+    const pane = element('aside', 'evidence-pane');
+    pane.setAttribute('aria-label', 'Source evidence');
+    const context = { mode: 'field', comparisonEvidence: comparison.evidence, caseId };
+
+    const rows = order.map(field => {
+      const evidence = fields[field] || {};
+      const row = element('button', 'field-row');
+      row.type = 'button';
+      row.dataset.field = field;
+      if (evidence.match === false) row.classList.add('is-diff');
+      const si = element('span', 'field-value', evidence.si ?? 'Not found');
+      const bl = element('span', 'field-value', evidence.bl ?? 'Not found');
+      si.title = evidence.si ?? '';
+      bl.title = evidence.bl ?? '';
+      if (evidence.si == null) si.classList.add('is-missing');
+      if (evidence.bl == null) bl.classList.add('is-missing');
+      const result = element('span', 'field-result');
+      result.append(statusChip(evidence));
+      const note = matchNote(evidence);
+      if (note) result.append(element('span', 'match-note', note));
+      if (evidence.corrected) result.append(element('span', 'corrected-tag', 'Corrected'));
+      row.append(element('span', 'field-name', fieldLabel(field)), si, bl, result);
+      row.addEventListener('click', () => select(field));
+      list.append(row);
+      return row;
+    });
+
+    function select(field) {
+      rows.forEach(row => row.setAttribute('aria-current', String(row.dataset.field === field)));
+      context.field = field;
+      context.evidence = fields[field] || {};
+      renderEvidencePane(pane, context);
+    }
+
+    list.addEventListener('keydown', event => {
+      if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+      const index = rows.indexOf(document.activeElement);
+      if (index < 0) return;
+      event.preventDefault();
+      const next = event.key === 'Home' ? 0
+        : event.key === 'End' ? rows.length - 1
+          : Math.min(rows.length - 1, Math.max(0, index + (event.key === 'ArrowDown' ? 1 : -1)));
+      rows[next].focus();
+      select(rows[next].dataset.field);
+    });
+
+    grid.append(list, pane);
+    section.append(grid);
+
+    const verification = comparison.evidence.verification;
+    if (verification) {
+      section.append(element('p', 'evidence-note', verification.status === 'AGREED'
+        ? 'An independent second read of both documents agreed with this extraction.'
+        : `Independent verification: ${stateLabel(verification.status)}.`));
+    }
+
+    // Open on the field that needs a decision, so evidence is on screen
+    // before anything is clicked.
+    const first = order.find(field => fields[field]?.match === false)
+      || order.find(field => fields[field]?.match == null) || order[0];
+    if (first) select(first);
+    return section;
   }
 
   function renderComparison(comparison, caseState, caseId) {
+    if (comparison?.evidence?.fields) return renderFieldReview(comparison, caseId);
     const section = element('section', 'detail-section comparison');
     section.append(element('h3', '', 'Field comparison'));
     if (!comparison?.evidence?.fields) {
@@ -581,55 +904,6 @@
       }
       return section;
     }
-    if (caseState === 'VERIFIED') {
-      const count = comparedFields(comparison.evidence.fields).length;
-      section.append(element('p', 'comparison-summary is-ok', `All ${count} required fields match.`));
-    }
-    const table = element('table');
-    const thead = element('thead');
-    const header = element('tr');
-    ['Field', 'Shipping instruction', 'Draft bill of lading', 'Result', 'Source evidence'].forEach(label => header.append(element('th', '', label)));
-    thead.append(header);
-    const tbody = element('tbody');
-    comparedFields(comparison.evidence.fields).forEach(field => {
-      const evidence = comparison.evidence.fields[field] || {};
-      const row = element('tr', evidence.match === false ? 'is-different' : '');
-      const result = element('td', 'result-word', evidence.match === true ? 'Match' : evidence.match === false ? 'Different' : 'Review');
-      const note = matchNote(evidence);
-      if (note) result.append(element('span', 'match-note', note));
-      if (evidence.corrected) {
-        result.append(element('span', 'corrected-tag', `Corrected from ${evidence.corrected.from || 'blank'}`));
-      }
-      const actions = element('td');
-      actions.append(evidenceActions(field, evidence, comparison.evidence));
-      const correct = element('button', 'link-button', 'Correct');
-      correct.type = 'button';
-      correct.setAttribute('aria-expanded', 'false');
-      actions.append(correct);
-      row.append(
-        element('td', '', fieldLabel(field)),
-        element('td', '', evidence.si ?? 'Unavailable'),
-        element('td', '', evidence.bl ?? 'Unavailable'),
-        result,
-        actions
-      );
-      tbody.append(row);
-      const editor = correctionRow(caseId, field, evidence);
-      tbody.append(editor);
-      correct.addEventListener('click', () => {
-        editor.hidden = !editor.hidden;
-        correct.setAttribute('aria-expanded', String(!editor.hidden));
-      });
-    });
-    table.append(thead, tbody);
-    section.append(table);
-    const verification = comparison.evidence.verification;
-    if (verification) {
-      section.append(element('p', 'evidence-note', verification.status === 'AGREED'
-        ? 'Independent document read agreed with the first extraction.'
-        : `Independent verification: ${stateLabel(verification.status)}.`));
-    }
-    return section;
   }
 
   function renderDocuments(documents) {

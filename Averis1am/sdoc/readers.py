@@ -33,9 +33,18 @@ def _ocr_pdf(data):
     """-> one text block per page, so extracted values keep a page number."""
     import pypdfium2 as pdfium
     import pytesseract
-    pdf = pdfium.PdfDocument(data)
-    return [pytesseract.image_to_string(page.render(scale=2).to_pil())
-            for page in pdf]
+
+    from .pdfium_guard import PDFIUM_LOCK
+
+    # Render under the lock (pdfium is not thread-safe), then OCR outside it:
+    # Tesseract takes seconds and must not block every other page render.
+    with PDFIUM_LOCK:
+        pdf = pdfium.PdfDocument(data)
+        try:
+            images = [page.render(scale=2).to_pil() for page in pdf]
+        finally:
+            pdf.close()
+    return [pytesseract.image_to_string(image) for image in images]
 
 
 def _ocr_image(data):
