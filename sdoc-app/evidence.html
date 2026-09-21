@@ -5,24 +5,24 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Evidence preview · SDOC</title>
   <style>
-    body { margin: 0; font-family: Arial, sans-serif; color: #12221b; background: #f4f7f5; }
-    header { display: flex; justify-content: space-between; gap: 16px; align-items: center; padding: 14px 18px; background: white; border-bottom: 1px solid #dbe4df; }
-    h1 { margin: 0; font-size: 16px; } p { margin: 4px 0 0; color: #62716a; font-size: 13px; }
+    body { margin: 0; font-family: Arial, sans-serif; color: #1c1c1c; background: #f6f6f4; }
+    header { display: flex; justify-content: space-between; gap: 16px; align-items: center; padding: 14px 18px; background: white; border-bottom: 1px solid #e6e6e2; }
+    h1 { margin: 0; font-size: 16px; } p { margin: 4px 0 0; color: #666663; font-size: 13px; }
     .actions { display: flex; gap: 8px; align-items: center; }
-    a, button { min-height: 32px; padding: 0 11px; border: 1px solid #aac3b6; border-radius: 6px; color: #1e5940; background: white; font-weight: 700; text-decoration: none; cursor: pointer; }
-    a:focus-visible, button:focus-visible { outline: 3px solid #176f55; outline-offset: 2px; }
-    button[aria-pressed="false"] { background: #eef2f0; color: #4c5b55; }
+    a, button { min-height: 32px; padding: 0 11px; border: 1px solid #cfcfca; border-radius: 6px; color: #1c1c1c; background: white; font-weight: 700; text-decoration: none; cursor: pointer; }
+    a:focus-visible, button:focus-visible { outline: 3px solid #d8741a; outline-offset: 2px; }
+    button[aria-pressed="false"] { background: #efefec; color: #3d3d3d; }
     button:disabled { opacity: .55; cursor: not-allowed; }
     main { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 14px; padding: 14px; height: calc(100vh - 63px); box-sizing: border-box; }
-    .viewer { background: #55605c; border-radius: 10px; overflow: auto; padding: 14px; }
+    .viewer { background: #5a5a57; border-radius: 10px; overflow: auto; padding: 14px; }
     /* The wrapper shrinks to the rendered page, so a box sized as a share of
        the wrapper is a share of the page itself, at any display width. */
     .page-wrap { position: relative; margin: 0 auto; background: white; box-shadow: 0 2px 12px #0000002e; }
     .page-wrap img { display: block; width: 100%; }
-    .overlay { position: absolute; border: 3px solid #ff8a00; background: rgba(255, 138, 0, .16); pointer-events: none; display: none; }
-    .viewer-note { margin: 0; padding: 26px; color: #eef4f1; font-size: 13px; line-height: 1.6; text-align: center; }
-    aside { background: white; border: 1px solid #dbe4df; border-radius: 10px; padding: 16px; overflow: auto; }
-    dl { margin: 0; display: grid; gap: 12px; } dt { color: #62716a; font-size: 12px; } dd { margin: 3px 0 0; font-size: 13px; overflow-wrap: anywhere; }
+    .overlay { position: absolute; border: 3px solid #e8892a; background: rgba(232, 137, 42, .16); pointer-events: none; display: none; }
+    .viewer-note { margin: 0; padding: 26px; color: #f6f6f4; font-size: 13px; line-height: 1.6; text-align: center; }
+    aside { background: white; border: 1px solid #e6e6e2; border-radius: 10px; padding: 16px; overflow: auto; }
+    dl { margin: 0; display: grid; gap: 12px; } dt { color: #666663; font-size: 12px; } dd { margin: 3px 0 0; font-size: 13px; overflow-wrap: anywhere; }
     @media (max-width: 850px) { main { grid-template-columns: 1fr; height: auto; } .viewer { max-height: 70vh; } }
   </style>
 </head>

@@ -1,0 +1,14 @@
+# Render web service. Secrets are not stored here: in the Render dashboard use
+# Environment > "Add from .env" and paste the contents of render.env.
+services:
+  - type: web
+    name: sdoc
+    runtime: python
+    plan: free
+    # The server also serves sdoc-app/ and sdoc-landing/, so it runs from the repo root checkout.
+    buildCommand: pip install -r Averis1am/requirements.txt
+    startCommand: cd Averis1am && uvicorn sdoc.api:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7

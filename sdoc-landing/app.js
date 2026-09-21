@@ -1,5 +1,6 @@
 (() => {
   'use strict';
+  document.documentElement.classList.add('js');
   const baseFields = [
     ['Shipper', 'Bluewater Logistics Sdn Bhd', 'Bluewater Logistics Sdn Bhd'],
     ['Consignee', 'Harborline Trading Pte Ltd', 'Harborline Trading Pte Ltd'],
@@ -51,6 +52,8 @@
   }
   function setScenario(key) {
     if (!Object.hasOwn(scenarios, key)) return;
+    const previous = scenarios[active];
+    const changed = active !== key;
     active = key;
     const s = scenarios[key];
     $('case-id').textContent = s.id;
@@ -66,7 +69,7 @@
     $('demo-action').firstChild.textContent = `${s.action} `;
     const rows = $('comparison-rows');
     rows.replaceChildren();
-    s.rows.forEach(f => {
+    s.rows.forEach((f, index) => {
       const row = el('div', 'table-row' + (f.kind === 'diff' ? ' has-diff' : f.kind === 'review' ? ' has-review' : ''));
       row.setAttribute('role', 'row');
       const n = el('span', '', f.name), si = el('span', f.kind === 'diff' ? 'value-diff' : f.kind === 'review' ? 'value-review' : '', f.si);
@@ -77,7 +80,13 @@
       use.setAttribute('href', f.kind === 'good' ? '#i-check' : f.kind === 'diff' ? '#i-alert' : '#i-eye');
       icon.append(use); outcome.append(icon, document.createTextNode(f.result));
       row.append(n,si,bl,outcome); rows.append(row);
+      if (changed && JSON.stringify(f) !== JSON.stringify(previous.rows[index]) && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        row.animate([{ backgroundColor: '#f9dbb8' }, { backgroundColor: getComputedStyle(row).backgroundColor }], { duration: 750, easing: 'ease-out' });
+      }
     });
+    if (changed && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      $('result-icon').parentElement.animate([{ opacity: .5, transform: 'translateY(4px)' }, { opacity: 1, transform: 'none' }], { duration: 200, easing: 'ease-out' });
+    }
     document.querySelectorAll('[data-scenario]').forEach(tab => {
       const selected = tab.dataset.scenario === key;
       tab.classList.toggle('active',selected);
@@ -129,5 +138,64 @@
     }),{threshold:.12,rootMargin:'0px 0px 18px 0px'});
     revealItems.forEach(item => observer.observe(item));
   } else revealItems.forEach(item => item.classList.add('is-visible'));
+  // Batch pointer updates into one frame; reset when motion preferences change.
+  const stack = $('stack-3d');
+  const hero = document.querySelector('.hero');
+  const heroMotion = window.matchMedia('(hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference)');
+  // Letters split so each can follow the pointer; the heading still reads as one phrase.
+  const mark = hero?.querySelector('h1 .mark');
+  let markChars = [];
+  if (mark) {
+    const text = mark.textContent;
+    const title = mark.closest('h1');
+    title.setAttribute('aria-label', title.textContent.replace(/\s+/g, ' ').trim());
+    markChars = [...text].map(char => {
+      const span = document.createElement('span');
+      span.className = 'mark-char';
+      span.setAttribute('aria-hidden', 'true');
+      span.textContent = char === ' ' ? '\u00a0' : char;
+      return span;
+    });
+    mark.replaceChildren(...markChars);
+  }
+  if (stack && hero) {
+    let frame = 0;
+    const resetHero = () => {
+      cancelAnimationFrame(frame);
+      frame = 0;
+      hero.classList.remove('is-exploring');
+      markChars.forEach(char => char.style.removeProperty('--lift'));
+      stack.style.removeProperty('--rx');
+      stack.style.removeProperty('--ry');
+    };
+    hero.addEventListener('pointermove', e => {
+      if (!heroMotion.matches || e.pointerType === 'touch') return;
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        const box = hero.getBoundingClientRect();
+        hero.classList.add('is-exploring');
+        stack.style.setProperty('--rx', `${((e.clientX - box.left) / box.width - .5) * 8}deg`);
+        stack.style.setProperty('--ry', `${((e.clientY - box.top) / box.height - .5) * -6}deg`);
+        if (mark) {
+          // Lift the letters nearest the pointer, easing off with distance, so
+          // the lift follows the cursor along the phrase. Layout offsets ignore
+          // transforms, so a lifted letter never shifts its own measurement.
+          const r = mark.getBoundingClientRect();
+          const dy = Math.max(r.top - e.clientY, 0, e.clientY - r.bottom);
+          const reach = Math.max(0, 1 - dy / 110);
+          markChars.forEach(char => {
+            const dx = e.clientX - (r.left + char.offsetLeft + char.offsetWidth / 2);
+            const lift = reach * Math.exp(-(dx * dx) / (2 * 55 * 55));
+            char.style.setProperty('--lift', lift.toFixed(3));
+          });
+        }
+      });
+    });
+    hero.addEventListener('pointerleave', resetHero);
+    hero.addEventListener('pointercancel', resetHero);
+    heroMotion.addEventListener('change', resetHero);
+    window.addEventListener('blur', resetHero);
+  }
   setScenario(active);
 })();

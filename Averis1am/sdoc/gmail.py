@@ -265,7 +265,8 @@ class GmailSyncService:
             "scope": " ".join(SCOPES),
             "access_type": "offline",
             "include_granted_scopes": "true",
-            "prompt": "consent",
+            # Always show the account chooser so an admin can pick (or switch) mailboxes.
+            "prompt": "select_account consent",
             "state": state,
         }
         return f"{AUTH_URL}?{urlencode(params)}"

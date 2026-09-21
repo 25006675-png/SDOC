@@ -3,60 +3,66 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#0a1720">
+  <meta name="theme-color" content="#f6f6f4">
   <meta name="description" content="SDOC operational analytics for shipping document verification.">
-  <title>SDOC Admin Analytics</title>
-  <link rel="stylesheet" href="styles.css">
-  <script src="admin.js" defer></script>
+  <title>SDOC Administration</title>
+  <link rel="stylesheet" href="styles.css?v=evidence3">
+  <script src="admin.js?v=polish2" defer></script>
 </head>
-<body>
+<body class="admin-page">
   <a class="skip-link" href="#analytics">Skip to analytics</a>
   <div class="shell">
     <aside class="sidebar">
       <a class="brand" href="/app/" aria-label="SDOC workspace home">
         <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
-        <span>SDOC<span class="brand-dot">.</span></span>
+        <span class="brand-name">SDOC</span>
       </a>
-      <nav aria-label="Product areas">
-        <a class="nav-item" href="/app/"><span class="nav-icon" aria-hidden="true">&#9671;</span>Worker queue</a>
-        <a class="nav-item is-active" href="/app/admin.html"><span class="nav-icon" aria-hidden="true">%</span>Admin metrics</a>
+      <nav class="nav" aria-label="Product areas">
+        <a class="nav-item" href="/app/" aria-label="Case queue" title="Case queue">
+          <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 9.5h3l1 2h4l1-2h3M2 9.5 4 3.5h8l2 6V13H2Z"/></svg>
+          <span class="nav-label">Case queue</span>
+        </a>
+        <a class="nav-item is-active" href="/app/admin.html" aria-current="page" aria-label="Administration" title="Administration">
+          <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 13V8M8 13V3M13 13V6"/></svg>
+          <span class="nav-label">Administration</span>
+        </a>
       </nav>
-      <div class="sidebar-user" id="sidebar-user" hidden>
-        <span class="user-avatar" id="user-initial" aria-hidden="true">?</span>
-        <span class="user-meta">
-          <strong id="user-name">Signed out</strong>
-          <small id="user-role">—</small>
-        </span>
-        <form method="post" action="/logout"><button class="signout-button" type="submit">Sign out</button></form>
-      </div>
       <div class="sidebar-foot">
         <span class="connection-dot" id="connection-dot"></span>
         <span><strong id="connection-label">Connecting</strong><small id="store-label">Checking backend</small></span>
       </div>
+      <div class="sidebar-user" id="sidebar-user" hidden>
+        <span class="user-avatar" id="user-initial" aria-hidden="true">?</span>
+        <span class="user-meta">
+          <strong id="user-name">Signed out</strong>
+          <small id="user-role">&mdash;</small>
+        </span>
+        <form method="post" action="/logout">
+          <button class="btn btn-ghost btn-sm btn-icon" type="submit" aria-label="Sign out" title="Sign out">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 2.5H3v11h3M10 5l3 3-3 3M13 8H6"/></svg>
+          </button>
+        </form>
+      </div>
     </aside>
 
-    <main id="analytics">
-      <header class="topbar">
+    <main class="page" id="analytics">
+      <div class="page-inner">
+      <header class="page-head">
         <div>
-          <h1>Operations analytics</h1>
-          <p>Measured workflow health, quality signals, and human-review demand.</p>
+          <p class="workspace-label">SDOC / Administration</p><h1 id="admin-title">Operations overview</h1>
+          <p id="admin-description">A clear view of your queue, review workload and document quality.</p>
         </div>
         <button class="refresh-button" id="admin-refresh" type="button" title="Reload metrics from the case store"><span class="refresh-icon" aria-hidden="true">&#8635;</span>Refresh</button>
       </header>
 
-
-      <section class="mailbox-panel" aria-label="Mailbox connections">
-        <header class="admin-section-head">
-          <div>
-            <h2>Connected mailboxes</h2>
-            <p>An administrator connects these once. Workers process the queue they create.</p>
-          </div>
-          <button class="refresh-button" id="mailbox-refresh" type="button" title="Re-check mailbox connections"><span class="refresh-icon" aria-hidden="true">&#8635;</span>Re-check</button>
-        </header>
-        <ul class="provider-list" id="provider-list"></ul>
-        <p class="definition-note" id="mailbox-note">Checking mailbox connections…</p>
-      </section>
-
+      <div class="admin-tabs" role="tablist" aria-label="Administration">
+        <button id="tab-overview" role="tab" aria-selected="true" aria-controls="panel-overview" data-admin-tab="overview">Overview</button>
+        <button id="tab-members" role="tab" aria-selected="false" aria-controls="panel-members" tabindex="-1" data-admin-tab="members">Members <span class="tab-count" id="member-count">4</span></button>
+        <button id="tab-connections" role="tab" aria-selected="false" aria-controls="panel-connections" tabindex="-1" data-admin-tab="connections">Connections</button>
+        <button id="tab-settings" role="tab" aria-selected="false" aria-controls="panel-settings" tabindex="-1" data-admin-tab="settings">Settings</button>
+      </div>
+      <div id="admin-notice" class="admin-notice" role="status" hidden></div>
+      <section id="panel-overview" class="admin-panel" role="tabpanel" aria-labelledby="tab-overview" tabindex="0">
       <section class="admin-summary" aria-label="Key operational metrics">
         <article><span>Processed messages</span><strong id="processed-messages">—</strong><small>Comparison and routed mail</small></article>
         <article><span>Automated resolution</span><strong id="automation-rate">—</strong><small>Cases currently verified</small></article>
@@ -110,50 +116,64 @@
           <div class="rank-list" id="field-ranking"></div>
         </section>
       </div>
-      <section class="admin-section" aria-label="Team members">
-        <header class="admin-section-head">
-          <div>
-            <h2>Team members<span class="demo-tag">Demo</span></h2>
-            <p>Worker and admin accounts for this organisation. Not persisted in this build.</p>
-          </div>
-          <button class="secondary-button" id="invite-member" type="button">Invite member</button>
-        </header>
-        <table class="member-table">
-          <thead><tr><th>Name</th><th>Username</th><th>Role</th><th>Status</th><th></th></tr></thead>
-          <tbody id="member-rows"></tbody>
-        </table>
-      </section>
-
-      <section class="admin-section" aria-label="Access and policy">
-        <header class="admin-section-head">
-          <div>
-            <h2>Access &amp; policy<span class="demo-tag">Demo</span></h2>
-            <p>Organisation defaults. These controls are not wired to the backend in this build.</p>
-          </div>
-        </header>
-        <div class="policy-grid">
-          <label>Session timeout
-            <select><option>8 hours</option><option selected>12 hours</option><option>24 hours</option></select>
-          </label>
-          <label>Document retention
-            <select><option>30 days</option><option selected>90 days</option><option>1 year</option></select>
-          </label>
-          <label>Waiting-document timeout
-            <select><option>12 hours</option><option selected>24 hours</option><option>48 hours</option></select>
-          </label>
-          <label class="policy-toggle">
-            <input type="checkbox" checked disabled> Correction emails require human approval
-          </label>
-          <label class="policy-toggle">
-            <input type="checkbox" checked disabled> Auto-close verified cases
-          </label>
-          <label class="policy-toggle">
-            <input type="checkbox" disabled> Allow workers to export case data
-          </label>
-        </div>
-      </section>
-
       <p class="data-note" id="data-note" role="status">Loading persisted metrics…</p>
+      </section>
+      <section id="panel-members" class="admin-panel" role="tabpanel" aria-labelledby="tab-members" tabindex="0" hidden>
+        <div class="demo-notice"><span class="demo-tag">Demo workspace</span> Sample members. Changes last until you reload; no invitations are sent.</div>
+        <section class="admin-section">
+          <header class="admin-section-head"><div><h2>Your team</h2><p>Manage who reviews shipments and administers this workspace.</p></div><button class="primary-button" id="invite-member" type="button" aria-expanded="false" aria-controls="member-form">+ Add member</button></header>
+          <form id="member-form" class="member-form" hidden>
+            <h3>Add a demo member</h3>
+            <div class="form-grid">
+              <label>Full name<input id="member-name" name="name" required maxlength="80" autocomplete="name"></label>
+              <label>Email address<input id="member-email" name="email" type="email" required maxlength="120" autocomplete="email"></label>
+              <label>Workspace role<select id="member-role" name="role"><option>Worker</option><option>Admin</option></select></label>
+            </div>
+            <p class="definition-note">Workers review cases. Administrators also manage the workspace.</p>
+            <p id="member-error" class="form-error" role="alert" hidden></p>
+            <div class="form-actions"><button class="primary-button" type="submit">Add demo member</button><button class="secondary-button" id="cancel-member" type="button">Cancel</button></div>
+          </form>
+          <div class="member-toolbar"><label class="member-search"><span class="sr-only">Search members</span><input id="member-search" type="search" placeholder="Search by name or email"></label><span id="member-summary" class="definition-note"></span></div>
+          <div class="table-scroll"><table class="member-table"><thead><tr><th scope="col">Member</th><th scope="col">Email / username</th><th scope="col">Role</th><th scope="col">Status</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead><tbody id="member-rows"></tbody></table></div>
+          <p id="members-empty" class="empty-list" hidden>No members match your search.</p>
+        </section>
+        <div class="role-guide"><div><h3>Worker</h3><p>Compare documents, inspect evidence and resolve assigned reviews.</p></div><div><h3>Administrator</h3><p>Worker access, plus operational analytics and mailbox connections.</p></div></div>
+      </section>
+      <section id="panel-connections" class="admin-panel" role="tabpanel" aria-labelledby="tab-connections" tabindex="0" hidden>
+      <section class="mailbox-panel" aria-label="Mailbox connections">
+        <header class="admin-section-head">
+          <div>
+            <h2>Connected mailboxes</h2>
+            <p>An administrator connects these once. Workers process the queue they create.</p>
+          </div>
+          <button class="refresh-button" id="mailbox-refresh" type="button" title="Re-check mailbox connections"><span class="refresh-icon" aria-hidden="true">&#8635;</span>Re-check</button>
+        </header>
+        <ul class="provider-list" id="provider-list"></ul>
+        <p class="definition-note" id="mailbox-note">Checking mailbox connections…</p>
+      </section>
+
+      </section>
+      <section id="panel-settings" class="admin-panel" role="tabpanel" aria-labelledby="tab-settings" tabindex="0" hidden>
+        <div class="demo-notice"><span class="demo-tag">Demo settings</span> Preview workspace preferences. These do not change live processing or access.</div>
+        <form id="settings-form" class="settings-form">
+          <section class="admin-section settings-section"><div><h2>Workspace profile</h2><p>The name and regional defaults for your operations team.</p></div><div class="form-grid">
+            <label>Workspace name<input name="workspace" value="SDOC Operations" required maxlength="80"></label>
+            <label>Time zone<select name="timezone"><option>Asia/Singapore</option><option>Asia/Kuala_Lumpur</option><option>UTC</option></select></label>
+          </div></section>
+          <section class="admin-section settings-section"><div><h2>Review preferences</h2><p>Choose how the team follows up on shipping documents.</p></div><div class="form-grid">
+            <label>Waiting-document timeout<select name="waiting"><option>12 hours</option><option selected>24 hours</option><option>48 hours</option></select></label>
+            <label>Document retention<select name="retention"><option>30 days</option><option selected>90 days</option><option>1 year</option></select></label>
+            <label class="setting-check"><input name="approval" type="checkbox" checked><span>Require approval for correction emails<small>A reviewer checks each message before it is sent.</small></span></label>
+            <label class="setting-check"><input name="digest" type="checkbox" checked><span>Daily review digest<small>A summary of cases that need attention.</small></span></label>
+          </div></section>
+          <section class="admin-section settings-section"><div><h2>Access preferences</h2><p>Preview the defaults for signed-in team members.</p></div><div class="form-grid">
+            <label>Session timeout<select name="session"><option>8 hours</option><option selected>12 hours</option><option>24 hours</option></select></label>
+            <label class="setting-check"><input name="export" type="checkbox"><span>Allow worker exports<small>Let workers download case summaries.</small></span></label>
+          </div></section>
+          <div class="settings-footer"><span id="settings-status" role="status">No unsaved changes</span><div class="form-actions"><button id="settings-reset" class="secondary-button" type="button" disabled>Discard changes</button><button id="settings-save" class="primary-button" type="submit" disabled>Save demo settings</button></div></div>
+        </form>
+      </section>
+      </div>
     </main>
   </div>
 </body>

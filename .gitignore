@@ -20,3 +20,12 @@ Averis1am/data/spend_ledger.json
 
 # Claude Code session worktrees
 .claude/worktrees/
+
+# Outlook OAuth credentials and sync state
+Averis1am/data/outlook_token.json
+Averis1am/data/outlook_state.json
+
+# Generated locally: demo kit (python Averis1am/scripts/generate_demo_kit.py)
+# and the Render environment file, which holds secrets
+demo-kit/
+render.env

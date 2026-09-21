@@ -217,6 +217,8 @@ class OutlookSyncService:
             "response_type": "code",
             "scope": " ".join(SCOPES),
             "response_mode": "query",
+            # Always show the account chooser so an admin can pick (or switch) mailboxes.
+            "prompt": "select_account",
             "state": state,
         }
         return f"{self.cfg.authorize_url}?{urlencode(params)}"

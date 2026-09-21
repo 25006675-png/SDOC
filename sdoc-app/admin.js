@@ -33,47 +33,136 @@
     { name: 'Nurul Aisyah', username: 'n.aisyah', role: 'Worker', status: 'Invited' }
   ];
 
+  function notify(message, undo) {
+    const notice = $('admin-notice');
+    notice.replaceChildren(document.createTextNode(message));
+    notice.hidden = false;
+    if (undo) {
+      const button = document.createElement('button');
+      button.className = 'link-button'; button.type = 'button'; button.textContent = 'Undo';
+      button.addEventListener('click', () => { undo(); notify('Demo member restored.'); });
+      notice.append(button);
+    }
+  }
+
   function renderMembers() {
-    const body = document.getElementById('member-rows');
-    if (!body) return;
-    body.replaceChildren(...MEMBERS.map(member => {
+    const body = $('member-rows');
+    const query = $('member-search').value.trim().toLowerCase();
+    const visible = MEMBERS.filter(member => `${member.name} ${member.username}`.toLowerCase().includes(query));
+    setText('member-count', MEMBERS.length);
+    setText('member-summary', `${MEMBERS.length} members / ${MEMBERS.filter(m => m.role === 'Admin').length} administrators`);
+    $('members-empty').hidden = visible.length > 0;
+    body.replaceChildren(...visible.map(member => {
       const row = document.createElement('tr');
       const cell = (text, cls) => {
         const td = document.createElement('td');
         if (cls) td.className = cls;
-        td.textContent = text;
-        return td;
+        td.textContent = text; return td;
       };
-      const actions = document.createElement('td');
+      const name = cell('', 'member-identity');
+      const avatar = document.createElement('span'); avatar.className = 'member-avatar';
+      avatar.textContent = member.name.split(/\s+/).slice(0, 2).map(word => word[0]).join('');
+      avatar.setAttribute('aria-hidden', 'true');
+      name.append(avatar, document.createTextNode(member.name));
+      const actions = cell('');
       const remove = document.createElement('button');
-      remove.type = 'button';
-      remove.className = 'link-button';
-      remove.textContent = 'Remove';
-      remove.addEventListener('click', () => row.remove());
+      remove.type = 'button'; remove.className = 'link-button'; remove.textContent = 'Remove';
+      remove.setAttribute('aria-label', `Remove ${member.name}`);
+      remove.addEventListener('click', () => {
+        const index = MEMBERS.indexOf(member);
+        MEMBERS.splice(index, 1); renderMembers();
+        notify(`${member.name} removed from the demo team.`, () => { MEMBERS.splice(index, 0, member); renderMembers(); });
+        $('member-search').focus({ preventScroll: true });
+      });
       actions.append(remove);
-      row.append(
-        cell(member.name),
-        cell(member.username, 'mono'),
-        cell(member.role, member.role === 'Admin' ? 'role-admin' : 'role-worker'),
-        cell(member.status, member.status === 'Active' ? 'status-active' : 'status-invited'),
-        actions
-      );
+      row.append(name, cell(member.username), cell(member.role, member.role === 'Admin' ? 'role-admin' : 'role-worker'),
+        cell(member.status, member.status === 'Active' ? 'status-active' : 'status-invited'), actions);
       return row;
     }));
   }
 
   function wireMemberDemo() {
-    const invite = document.getElementById('invite-member');
-    if (!invite) return;
-    invite.addEventListener('click', () => {
-      setText('data-note', 'Member management is a demo surface in this build; invitations are not sent.');
+    const form = $('member-form');
+    const close = () => {
+      form.hidden = true; form.reset(); $('member-error').hidden = true;
+      $('invite-member').setAttribute('aria-expanded', 'false'); $('invite-member').focus();
+    };
+    $('invite-member').addEventListener('click', () => {
+      if (!form.hidden) { close(); return; }
+      form.hidden = false; $('invite-member').setAttribute('aria-expanded', 'true'); $('member-name').focus();
+    });
+    $('cancel-member').addEventListener('click', close);
+    form.addEventListener('submit', event => {
+      event.preventDefault();
+      const name = $('member-name').value.trim();
+      const email = $('member-email').value.trim().toLowerCase();
+      if (!name || MEMBERS.some(member => member.username.toLowerCase() === email)) {
+        setText('member-error', !name ? 'Enter a member name.' : 'This email is already on the demo team.');
+        $('member-error').hidden = false; return;
+      }
+      MEMBERS.push({ name, username: email, role: $('member-role').value, status: 'Invited' });
+      $('member-search').value = ''; close(); renderMembers(); notify(`${name} added to the demo team. No invitation was sent.`);
+    });
+    $('member-search').addEventListener('input', renderMembers);
+  }
+
+  function wireAdminTabs() {
+    const tabs = [...document.querySelectorAll('[data-admin-tab]')];
+    const descriptions = {
+      overview: ['Operations overview', 'A clear view of your queue, review workload and document quality.'],
+      members: ['Team members', 'Give your operations team the right access to the workspace.'],
+      connections: ['Mailbox connections', 'Manage the inboxes that feed your shipment review queue.'],
+      settings: ['Workspace settings', 'Organisation details, review preferences and access defaults.']
+    };
+    function activate(key, updateHash = true) {
+      if (!descriptions[key]) key = 'overview';
+      tabs.forEach(tab => {
+        const selected = tab.dataset.adminTab === key;
+        tab.setAttribute('aria-selected', String(selected)); tab.tabIndex = selected ? 0 : -1;
+        $(tab.getAttribute('aria-controls')).hidden = !selected;
+      });
+      setText('admin-title', descriptions[key][0]); setText('admin-description', descriptions[key][1]);
+      $('admin-refresh').hidden = key !== 'overview'; $('admin-notice').hidden = true;
+      if (updateHash) history.replaceState(null, '', `#${key}`);
+    }
+    tabs.forEach((tab, index) => {
+      tab.addEventListener('click', () => activate(tab.dataset.adminTab));
+      tab.addEventListener('keydown', event => {
+        if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) return;
+        event.preventDefault();
+        const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+        tabs[next].focus(); activate(tabs[next].dataset.adminTab);
+      });
+    });
+    window.addEventListener('hashchange', () => activate(location.hash.slice(1), false));
+    activate(location.hash.slice(1), false);
+  }
+
+  function wireSettingsDemo() {
+    const form = $('settings-form');
+    const controls = [...form.querySelectorAll('input, select')];
+    const snapshot = () => controls.map(control => control.type === 'checkbox' ? control.checked : control.value);
+    let saved = snapshot();
+    const dirtyState = () => {
+      const dirty = JSON.stringify(snapshot()) !== JSON.stringify(saved);
+      $('settings-save').disabled = !dirty; $('settings-reset').disabled = !dirty;
+      setText('settings-status', dirty ? 'Unsaved demo changes' : 'No unsaved changes');
+    };
+    form.addEventListener('input', dirtyState); form.addEventListener('change', dirtyState);
+    $('settings-reset').addEventListener('click', () => {
+      controls.forEach((control, index) => { if (control.type === 'checkbox') control.checked = saved[index]; else control.value = saved[index]; });
+      dirtyState(); notify('Unsaved demo changes discarded.');
+    });
+    form.addEventListener('submit', event => {
+      event.preventDefault(); saved = snapshot(); dirtyState();
+      setText('settings-status', 'Demo settings saved for this visit');
+      notify('Demo preferences saved until reload. Live workspace settings are unchanged.');
     });
   }
 
-
   const PROVIDER_MARKS = {
-    gmail: '<svg viewBox="0 0 24 24" role="img" aria-label="Gmail"><rect x="1.5" y="4" width="21" height="16" rx="2.5" fill="#fff" stroke="#dadce0"/><path d="M2 6.2 12 13 22 6.2V18a2 2 0 0 1-2 2h-1.6V9.9L12 14.3 5.6 9.9V20H4a2 2 0 0 1-2-2Z" fill="#ea4335"/><path d="M2 6.2A2 2 0 0 1 4 4h.9L12 9 19.1 4h.9a2 2 0 0 1 2 2.2L12 13Z" fill="#c5221f"/></svg>',
-    outlook: '<svg viewBox="0 0 24 24" role="img" aria-label="Outlook"><rect x="9" y="4.5" width="13.5" height="15" rx="1.6" fill="#0f6cbd"/><path d="M11 9h9.5v2.2L15.8 14 11 11.2Z" fill="#fff" opacity=".85"/><rect x="1.5" y="6" width="11" height="12" rx="2.2" fill="#0a4f8f"/><ellipse cx="7" cy="12" rx="3.1" ry="3.6" fill="none" stroke="#fff" stroke-width="1.7"/></svg>'
+    gmail: '<img src="/assets/icons/gmail.webp" alt="Gmail">',
+    outlook: '<img src="/assets/icons/outlook.webp" alt="Outlook">'
   };
 
   function relativeTime(value) {
@@ -179,7 +268,15 @@
     if (seconds < 86400) return `${(seconds / 3600).toFixed(1)} hr`;
     return `${(seconds / 86400).toFixed(1)} days`;
   }
-  function setText(id, value) { $(id).textContent = value; }
+  function setText(id, value) {
+    const node = $(id);
+    const changed = node.textContent !== String(value);
+    const hadValue = node.dataset.loaded === 'true';
+    node.textContent = value; node.dataset.loaded = 'true';
+    if (changed && hadValue && node.matches('.admin-summary strong, .metric-list dd, .reliability-score strong') && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      node.animate([{ backgroundColor: '#fdf0e3' }, { backgroundColor: 'transparent' }], { duration: 700 });
+    }
+  }
   function setConnection(ok, store) {
     $('connection-dot').classList.toggle('is-online', ok);
     setText('connection-label', ok ? 'Backend online' : 'Backend unavailable');
@@ -207,17 +304,18 @@
 
   function renderBars(metrics) {
     const root = $('state-bars');
-    root.replaceChildren();
     STATE_ORDER.forEach(state => {
       const count = metrics.states[state] || 0;
-      const row = document.createElement('div'); row.className = 'bar-row';
-      const label = document.createElement('span'); label.textContent = LABELS[state];
-      const track = document.createElement('div'); track.className = 'bar-track';
-      const fill = document.createElement('i'); fill.className = `bar-fill bar-${state.toLowerCase()}`;
-      fill.style.width = `${metrics.cases ? Math.max(2, count / metrics.cases * 100) : 0}%`;
-      track.append(fill);
-      const value = document.createElement('strong'); value.textContent = count;
-      row.append(label, track, value); root.append(row);
+      let row = root.querySelector(`[data-state="${state}"]`);
+      if (!row) {
+        row = document.createElement('div'); row.className = 'bar-row'; row.dataset.state = state;
+        const label = document.createElement('span'); label.textContent = LABELS[state];
+        const track = document.createElement('div'); track.className = 'bar-track'; track.setAttribute('aria-hidden', 'true');
+        const fill = document.createElement('i'); fill.className = `bar-fill bar-${state.toLowerCase()}`;
+        track.append(fill); row.append(label, track, document.createElement('strong')); root.append(row);
+      }
+      row.querySelector('.bar-fill').style.transform = `scaleX(${metrics.cases ? Math.min(1, count / metrics.cases) : 0})`;
+      row.querySelector('strong').textContent = count;
     });
   }
 
@@ -239,6 +337,7 @@
 
   async function load() {
     $('admin-refresh').classList.add('is-loading');
+    $('admin-refresh').disabled = true;
     try {
       const [health, metrics] = await Promise.all([get('/health'), get('/api/metrics')]);
       setConnection(true, health.store);
@@ -267,12 +366,14 @@
       setText('data-note', 'Metrics reflect the current persisted case store. Rates describe workflow outcomes, not estimated financial savings.');
     } catch (error) {
       setConnection(false, ''); setText('data-note', error.message);
-    } finally { $('admin-refresh').classList.remove('is-loading'); }
+    } finally { $('admin-refresh').classList.remove('is-loading'); $('admin-refresh').disabled = false; }
   }
 
   $('admin-refresh').addEventListener('click', load);
   loadIdentity();
   $('mailbox-refresh').addEventListener('click', loadMailboxes);
+  wireAdminTabs();
+  wireSettingsDemo();
   renderMembers();
   wireMemberDemo();
   loadMailboxes();

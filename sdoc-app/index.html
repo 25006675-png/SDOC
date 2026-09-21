@@ -3,11 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#0a1720">
+  <meta name="theme-color" content="#f6f6f4">
   <meta name="description" content="SDOC worker workspace for shipping document verification.">
   <title>SDOC Workspace</title>
-  <link rel="stylesheet" href="styles.css">
-  <script src="app.js" defer></script>
+  <link rel="stylesheet" href="styles.css?v=evidence3">
+  <script src="app.js?v=evidence4" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#workspace">Skip to workspace</a>
@@ -15,114 +15,106 @@
     <aside class="sidebar">
       <a class="brand" href="/app/" aria-label="SDOC workspace home">
         <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
-        <span>SDOC<span class="brand-dot">.</span></span>
+        <span class="brand-name">SDOC</span>
       </a>
-      <nav aria-label="Workspace views">
+      <nav class="nav" aria-label="Workspace views">
         <button class="nav-item is-active" data-view="action" type="button">
-          <span class="nav-icon" aria-hidden="true">◇</span>
-          Action queue
-          <span class="nav-count" id="nav-action-count">0</span>
+          <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 9.5h3l1 2h4l1-2h3M2 9.5 4 3.5h8l2 6V13H2Z"/></svg>
+          <span class="nav-label">Needs action</span>
+          <span class="nav-count is-strong" id="nav-action-count">0</span>
         </button>
         <button class="nav-item" data-view="all" type="button">
-          <span class="nav-icon" aria-hidden="true">▤</span>
-          All cases
+          <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h11M2.5 8h11M2.5 12.5h11"/></svg>
+          <span class="nav-label">All cases</span>
+          <span class="nav-count" id="nav-all-count">0</span>
         </button>
         <button class="nav-item" data-view="routed" type="button">
-          <span class="nav-icon" aria-hidden="true">↗</span>
-          Routed mail
+          <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h9v8H2ZM2 4l4.5 4L11 4M9.5 10.5l4.5-2.5-4.5-2.5"/></svg>
+          <span class="nav-label">Routed mail</span>
+          <span class="nav-count" id="nav-routed-count">0</span>
         </button>
-        <a class="nav-item" href="/app/admin.html">
-          <span class="nav-icon" aria-hidden="true">%</span>
-          Admin metrics
+        <a class="nav-item" id="nav-admin" href="/app/admin.html" aria-label="Administration" title="Administration" hidden>
+          <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 13V8M8 13V3M13 13V6"/></svg>
+          <span class="nav-label">Administration</span>
         </a>
       </nav>
+      <div class="sidebar-foot">
+        <span class="connection-dot" id="connection-dot"></span>
+        <span><strong id="connection-label">Connecting</strong><small id="store-label">Checking backend</small></span>
+      </div>
       <div class="sidebar-user" id="sidebar-user" hidden>
         <span class="user-avatar" id="user-initial" aria-hidden="true">?</span>
         <span class="user-meta">
           <strong id="user-name">Signed out</strong>
           <small id="user-role">—</small>
         </span>
-        <form method="post" action="/logout"><button class="signout-button" type="submit">Sign out</button></form>
-      </div>
-      <div class="sidebar-foot">
-        <span class="connection-dot" id="connection-dot"></span>
-        <span><strong id="connection-label">Connecting</strong><small id="store-label">Checking backend</small></span>
+        <form method="post" action="/logout">
+          <button class="btn btn-ghost btn-sm btn-icon" type="submit" aria-label="Sign out" title="Sign out">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 2.5H3v11h3M10 5l3 3-3 3M13 8H6"/></svg>
+          </button>
+        </form>
       </div>
     </aside>
 
-    <main id="workspace">
+    <div class="main">
       <header class="topbar">
-        <div>
-          <h1>Document operations</h1>
-          <p>Review discrepancies, uncertain reads, and missing documents.</p>
-        </div>
+        <label class="search">
+          <span class="sr-only">Search cases</span>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg>
+          <input id="search-input" type="search" placeholder="Search shipment reference" autocomplete="off">
+        </label>
         <div class="topbar-actions">
-          <label class="search">
-            <span class="sr-only">Search cases</span>
-            <span aria-hidden="true">⌕</span>
-            <input id="search-input" type="search" placeholder="Search shipment reference" autocomplete="off">
-          </label>
-          <button class="icon-button" id="refresh-button" type="button" aria-label="Refresh workspace" title="Refresh workspace">↻</button>
+          <div class="mailbox-strip" id="mailbox-strip" role="status">
+            <span class="mailbox-dot" id="mailbox-dot"></span>
+            <img class="mailbox-icon" id="mailbox-icon" alt="" hidden>
+            <span class="mailbox-text">
+              <strong id="mailbox-title">Mailbox</strong>
+              <span id="mailbox-sync">Checking</span>
+            </span>
+            <span class="mailbox-hint" id="mailbox-detail"></span>
+            <span class="sr-only" id="mailbox-query"></span>
+          </div>
+          <button class="btn btn-ghost btn-icon" id="refresh-button" type="button" aria-label="Refresh workspace" title="Refresh workspace">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13 3v3.5H9.5M13 6.5A5.5 5.5 0 1 0 13.5 9"/></svg>
+          </button>
         </div>
       </header>
 
-      <section class="metrics" aria-label="Operational summary">
-        <div><span>Action required</span><strong id="metric-action">0</strong></div>
-        <div><span>Verified</span><strong id="metric-verified">0</strong></div>
-        <div><span>Waiting</span><strong id="metric-waiting">0</strong></div>
-        <div><span>Routed mail</span><strong id="metric-routed">0</strong></div>
-      </section>
-
-      <section class="mailbox-strip" aria-label="Mailbox status">
-        <span class="mailbox-dot" id="mailbox-dot"></span>
-        <strong id="mailbox-title">Mailbox status unavailable</strong>
-        <span id="mailbox-sync">Never synced</span>
-        <span class="mailbox-hint" id="mailbox-detail">An administrator connects the shared mailbox.</span>
-        <span class="sr-only" id="mailbox-query"></span>
-      </section>
-
-      <details class="routed-preview" id="routed-preview">
-        <summary>
-          <span>Routed mail</span>
-          <strong id="routed-preview-count">0</strong>
-        </summary>
-        <div class="routed-preview-list" id="routed-preview-list">
-          <p>No unrelated mail has been routed yet.</p>
-        </div>
-      </details>
-
-      <section class="work-area">
-        <div class="queue-panel">
+      <div class="workspace" id="workspace">
+        <section class="queue-panel" aria-labelledby="queue-title">
           <div class="panel-heading">
-            <div><h2 id="queue-title">Action queue</h2><p id="queue-description">Cases requiring a person.</p></div>
-            <select id="state-filter" aria-label="Filter cases by state">
+            <div class="panel-title">
+              <h1 id="queue-title">Needs action</h1>
+              <span class="queue-status" id="queue-status" role="status">Loading</span>
+            </div>
+            <select class="select-sm" id="state-filter" aria-label="Filter cases by state">
               <option value="ACTION">All actions</option>
               <option value="DISCREPANCY">Discrepancy</option>
               <option value="NEEDS_REVIEW">Needs review</option>
               <option value="BLOCKED">Blocked</option>
-              <option value="WAITING">Waiting</option>
+              <option value="WAITING">Waiting for documents</option>
               <option value="VERIFIED">Verified</option>
               <option value="ALL">All states</option>
             </select>
           </div>
-          <div class="queue-status" id="queue-status" role="status">Loading cases…</div>
+          <p class="sr-only" id="queue-description">Cases requiring a person.</p>
           <div class="case-list" id="case-list" aria-live="polite"></div>
-        </div>
+        </section>
 
         <article class="detail-panel" id="case-detail" aria-live="polite">
           <div class="empty-state">
-            <span class="empty-symbol" aria-hidden="true">◇</span>
             <h2>Select a shipment case</h2>
-            <p>Choose an item from the queue to inspect fields, document versions, and review history.</p>
+            <p>Choose a case from the list to compare its fields and source documents.</p>
           </div>
         </article>
-      </section>
-    </main>
+      </div>
+    </div>
   </div>
 
   <template id="loading-template">
     <div class="detail-loading" aria-label="Loading case">
-      <span></span><span></span><span></span><span></span>
+      <span class="sk sk-title"></span><span class="sk sk-line"></span>
+      <span class="sk sk-block"></span><span class="sk sk-block"></span>
     </div>
   </template>
 </body>

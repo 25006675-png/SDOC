@@ -89,7 +89,7 @@ def login_page(error="", next_path=""):
     # page for the role. Anything else must stay inside the app.
     if next_path and not next_path.startswith("/app"):
         next_path = ""
-    message = f'<p class="error">{html.escape(error)}</p>' if error else ""
+    message = f'<p class="error" id="login-error" role="alert">{html.escape(error)}</p>' if error else ""
     safe_next = html.escape(next_path, quote=True)
     return f"""
     <!doctype html>
@@ -98,29 +98,83 @@ def login_page(error="", next_path=""):
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width, initial-scale=1">
       <title>Sign in - SDOC</title>
+      <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
       <style>
-        body {{ margin: 0; min-height: 100vh; display: grid; place-items: center; font-family: Arial, sans-serif; background: #0a1720; color: #f4f7f5; }}
-        main {{ width: min(420px, calc(100vw - 32px)); padding: 32px; border: 1px solid #385247; border-radius: 12px; background: #10242b; }}
-        h1 {{ margin: 0 0 8px; font-size: 24px; }} p {{ color: #b7c6bf; line-height: 1.6; }}
+        body {{ margin: 0; min-height: 100vh; display: grid; place-items: center; font-family: "Segoe UI", Arial, sans-serif; background: #f6f6f4; color: #1c1c1c; }}
+        main {{ width: min(1000px, calc(100vw - 40px)); box-sizing: border-box; display: grid; grid-template-columns: 1.1fr 1fr; border: 1px solid #e6e6e2; border-radius: 12px; overflow: hidden; background: #fff; }}
+        .brand {{ display: inline-flex; align-items: center; gap: 10px; margin-bottom: 22px; color: #1c1c1c; font-weight: 800; font-size: 18px; text-decoration: none; }}
+        .brand img {{ width: 28px; height: 28px; }}
+        h1 {{ margin: 0 0 8px; font-size: 24px; font-style: italic; font-weight: 800; }} p {{ color: #666663; line-height: 1.6; }}
         label, input, button {{ display: block; width: 100%; box-sizing: border-box; }}
-        label {{ margin-top: 22px; color: #dce8df; font-weight: 700; font-size: 13px; }}
-        input {{ margin-top: 8px; min-height: 44px; border: 1px solid #5d746a; border-radius: 7px; padding: 0 12px; background: #07151b; color: white; }}
-        button {{ margin-top: 16px; min-height: 44px; border: 0; border-radius: 7px; background: #b9f18b; color: #10251d; font-weight: 800; cursor: pointer; }}
-        .error {{ color: #ffb3a8; }} a {{ color: #b9f18b; }}
+        label {{ margin-top: 20px; color: #1c1c1c; font-weight: 700; font-size: 13px; }}
+        input {{ margin-top: 8px; min-height: 44px; border: 1px solid #cfcfca; border-radius: 6px; padding: 0 12px; background: #fff; color: #1c1c1c; font: inherit; }}
+        input:focus {{ outline: 2px solid #d8741a; outline-offset: 1px; border-color: #d8741a; }}
+        button {{ margin-top: 22px; min-height: 46px; border: 0; border-radius: 6px; background: #a9540d; color: #fff; font: inherit; font-weight: 700; font-size: 16px; cursor: pointer; }}
+        button:hover {{ background: #8e4509; }}
+        .error {{ color: #a2362e; background: #fbe8e6; padding: 10px 12px; border-radius: 6px; }} a {{ color: #9a4f0a; }}
+        * {{ box-sizing: border-box; }}
+        [hidden] {{ display: none !important; }}
+        body {{ padding: 32px 0; }}
+        .login-story {{ padding: 48px; background: #fdf0e3; display: flex; flex-direction: column; justify-content: space-between; }}
+        .login-story h2 {{ margin: 26px 0 16px; font-size: 40px; font-weight: 800; font-style: italic; letter-spacing: -.03em; line-height: 1.12; text-wrap: balance; }}
+        .login-story p {{ color: #694624; max-width: 34ch; font-size: 15px; }}
+        .login-proof {{ margin-top: 36px; background: white; border-radius: 8px; padding: 20px; }}
+        .login-proof p {{ font-size: 12px; margin: 0 0 14px; color: #666663; }}
+        .proof-row {{ display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; font-size: 13px; border-top: 1px solid #e6e6e2; }}
+        .proof-row strong {{ color: #26734a; }}
+        .proof-row:last-child strong {{ color: #9a4f0a; }}
+        .login-form {{ padding: 56px 44px 40px; align-self: center; }}
+        .login-form h1 {{ font-size: 28px; font-style: normal; letter-spacing: -.02em; }}
+        .login-form > p {{ font-size: 14px; }}
+        .login-form .form-intro {{ margin-bottom: 28px; }}
+        .password-field {{ position: relative; }}
+        .password-field input {{ padding-right: 68px; }}
+        .password-toggle {{ position: absolute; top: 0; right: 4px; width: 58px; margin: 0; min-height: 44px; background: transparent; color: #694624; font-size: 12px; }}
+        .password-toggle:hover {{ background: #fdf0e3; }}
+        button:disabled {{ opacity: .65; cursor: wait; }}
+        :focus-visible {{ outline: 2px solid #9a4f0a; outline-offset: 3px; }}
+        .login-form .login-help {{ margin-top: 20px; font-size: 12px; }}
+        .login-form .login-back {{ margin-top: 32px; font-size: 13px; }}
+        .error {{ font-size: 13px; }}
+        @media (max-width: 720px) {{ main {{ max-width: 440px; grid-template-columns: 1fr; }} .login-story {{ padding: 24px 28px; }} .login-story .brand {{ margin: 0; }} .login-story h2, .login-story > p, .login-proof {{ display: none; }} .login-form {{ padding: 32px 28px; }} }}
       </style>
     </head>
     <body><main>
-      <h1>Sign in to SDOC</h1>
-      <p>Workers open the case queue. Administrators also see analytics and mailbox connections.</p>
+    <section class="login-story" aria-label="About SDOC">
+      <a class="brand" href="/"><img src="/assets/favicon.svg" alt="">SDOC</a>
+      <h2>Every shipment.<br>Accounted for.</h2>
+      <p>Compare shipping documents, trace every value and give your team a clear next step.</p>
+      <div class="login-proof" aria-label="Illustrative document check"><p>SI / Draft BL: example comparison</p><div class="proof-row"><span>Shipper</span><strong>Matches</strong></div><div class="proof-row"><span>Port of loading</span><strong>Matches</strong></div><div class="proof-row"><span>Gross weight</span><strong>Needs review</strong></div></div>
+    </section>
+    <section class="login-form" aria-labelledby="login-title">
+      <h1 id="login-title">Welcome back</h1>
+      <p class="form-intro">Sign in to your SDOC workspace.</p>
       {message}
-      <form method="post" action="/login">
+      <form id="login-form" method="post" action="/login">
         <label>Username<input name="username" type="text" autocomplete="username" autofocus required></label>
-        <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+        <label for="login-password">Password</label><div class="password-field"><input id="login-password" name="password" type="password" autocomplete="current-password" required><button class="password-toggle" id="password-toggle" type="button" aria-label="Show password" aria-controls="login-password" aria-pressed="false" hidden>Show</button></div>
         <input name="next" type="hidden" value="{safe_next}">
-        <button type="submit">Sign in</button>
+        <button id="sign-in" type="submit">Sign in</button>
       </form>
-      <p><a href="/">Return to the public overview</a></p>
-    </main></body></html>
+      <p class="login-help">Need access? Contact your workspace administrator.</p>
+      <p class="login-back"><a href="/">&larr; Back to the SDOC overview</a></p>
+    </section></main>
+    <script>
+      const form = document.getElementById('login-form');
+      const toggle = document.getElementById('password-toggle');
+      const password = document.getElementById('login-password');
+      const submit = document.getElementById('sign-in');
+      toggle.hidden = false;
+      toggle.addEventListener('click', () => {{
+        const visible = password.type === 'password';
+        password.type = visible ? 'text' : 'password';
+        toggle.textContent = visible ? 'Hide' : 'Show';
+        toggle.setAttribute('aria-label', visible ? 'Hide password' : 'Show password');
+        toggle.setAttribute('aria-pressed', String(visible));
+      }});
+      form.addEventListener('submit', () => {{ submit.disabled = true; submit.textContent = 'Signing in...'; form.setAttribute('aria-busy', 'true'); }});
+      window.addEventListener('pageshow', () => {{ submit.disabled = false; submit.textContent = 'Sign in'; form.removeAttribute('aria-busy'); }});
+    </script></body></html>
     """
 
 
@@ -130,9 +184,10 @@ def wants_html(path):
 
 def is_public_path(path):
     return (
-        path in {"/", "/index.html", "/styles.css", "/hero.css", "/app.js", "/health", "/login", "/api/auth/status"}
+        path in {"/", "/index.html", "/styles.css", "/app.js", "/health", "/login", "/api/auth/status"}
         or path.startswith("/api/mailbox/oauth/callback")
         or path.startswith("/favicon")
+        or path.startswith("/assets/")
     )
 
 

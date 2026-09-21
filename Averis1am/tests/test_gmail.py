@@ -104,6 +104,22 @@ class TestGmailSource(unittest.TestCase):
             self.assertIn(second, pending)
             service.close()
 
+    def test_authorization_url_lets_admin_choose_account(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = GmailConfig()
+            cfg.client_id = "client"
+            cfg.client_secret = "secret"
+            cfg.redirect_uri = "http://127.0.0.1/callback"
+            cfg.state_path = Path(tmp) / "gmail_state.json"
+            cfg.token_path = Path(tmp) / "gmail_token.json"
+            service = GmailSyncService(store=None, cfg=cfg, client=httpx.Client())
+
+            query = parse_qs(urlparse(service.authorization_url()).query)
+            # Google skips the chooser for a single signed-in session unless asked;
+            # consent is still needed so every connect returns a refresh token.
+            self.assertEqual(query["prompt"][0].split(), ["select_account", "consent"])
+            service.close()
+
 
 
 class _Stub:

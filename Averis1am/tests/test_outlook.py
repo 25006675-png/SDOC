@@ -102,6 +102,8 @@ class TestOutlookConfig(unittest.TestCase):
             self.assertEqual(query["client_id"], [cfg.client_id])
             self.assertEqual(query["redirect_uri"], [cfg.redirect_uri])
             self.assertIn("Mail.Read", query["scope"][0])
+            # Otherwise Microsoft silently reuses the browser's signed-in account.
+            self.assertEqual(query["prompt"], ["select_account"])
             service.close()
 
 
