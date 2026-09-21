@@ -70,8 +70,8 @@
 
   // Visible names only; the backend state names are unchanged. Every state
   // in the action queue needs a person, so the names say what is wrong:
-  // a value SDOC could not confirm, or a case stalled on a document.
-  const STATE_LABELS = { WAITING: 'Waiting for documents', NEEDS_REVIEW: 'Unconfirmed', BLOCKED: 'Stalled' };
+  // a person makes a judgment (Needs review) or fixes a prerequisite (Blocked).
+  const STATE_LABELS = { WAITING: 'Waiting for documents', NEEDS_REVIEW: 'Needs review', BLOCKED: 'Blocked' };
 
   function stateBadge(value) {
     const badge = element('span', `state state-${value.toLowerCase()}`);
@@ -976,7 +976,7 @@
   function fieldStatus(evidence) {
     if (evidence.match === true) return { word: 'Match', glyph: '✓', tone: 'match' };
     if (evidence.match === false) return { word: 'Different', glyph: '!', tone: 'diff' };
-    return { word: 'Unconfirmed', glyph: '?', tone: 'review' };
+    return { word: 'Needs review', glyph: '?', tone: 'review' };
   }
 
   function statusChip(evidence) {
@@ -1381,7 +1381,7 @@
       element('h3', '', 'Field comparison'),
       element('p', differing ? 'review-summary' : pending ? 'review-summary is-review' : 'review-summary is-ok',
         differing ? `${differing} of ${order.length} fields differ`
-          : pending ? `${pending} of ${order.length} fields unconfirmed`
+          : pending ? `${pending} of ${order.length} fields need review`
             : `All ${order.length} fields match`)
     );
     section.append(heading);

@@ -4,8 +4,8 @@
   const $ = id => document.getElementById(id);
   const STATE_ORDER = ['VERIFIED', 'DISCREPANCY', 'NEEDS_REVIEW', 'WAITING', 'BLOCKED'];
   const LABELS = {
-    VERIFIED: 'Verified', DISCREPANCY: 'Discrepancy', NEEDS_REVIEW: 'Unconfirmed',
-    WAITING: 'Waiting', BLOCKED: 'Stalled', gross_weight_kg: 'Gross weight',
+    VERIFIED: 'Verified', DISCREPANCY: 'Discrepancy', NEEDS_REVIEW: 'Needs review',
+    WAITING: 'Waiting', BLOCKED: 'Blocked', gross_weight_kg: 'Gross weight',
     container_count: 'Container count', port_of_loading: 'Port of loading',
     port_of_discharge: 'Port of discharge', notify_party: 'Notify party',
     shipper: 'Shipper', consignee: 'Consignee'

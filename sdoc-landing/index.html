@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Open+Sans:ital,wght@0,400;0,600;0,700;0,800;1,600;1,700;1,800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css?v=averis14" />
-  <script src="app.js?v=averis14" defer></script>
+  <script src="app.js?v=averis15" defer></script>
 </head>
 <body>
   <svg class="icon-sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -132,7 +132,7 @@
             <div class="scenario-row" role="tablist" aria-label="Sample comparison outcomes">
               <button class="scenario-tab active" type="button" role="tab" aria-selected="true" data-scenario="discrepancy">Discrepancy</button>
               <button class="scenario-tab" type="button" role="tab" aria-selected="false" data-scenario="verified">Verified</button>
-              <button class="scenario-tab" type="button" role="tab" aria-selected="false" data-scenario="review">Unconfirmed</button>
+              <button class="scenario-tab" type="button" role="tab" aria-selected="false" data-scenario="review">Needs review</button>
             </div>
           </div>
           <div class="result-summary">
@@ -161,8 +161,8 @@
         <div class="outcome-grid">
           <article class="outcome reveal"><span class="outcome-dot green"></span><h3>Verified</h3><p>Required fields are present and nothing differs.</p></article>
           <article class="outcome reveal"><span class="outcome-dot orange"></span><h3>Discrepancy</h3><p>See exactly what differs, with SI and BL values side by side.</p></article>
-          <article class="outcome reveal"><span class="outcome-dot purple"></span><h3>Unconfirmed</h3><p>Values SDOC can't confirm go to a person, with the context intact.</p></article>
-          <article class="outcome reveal"><span class="outcome-dot grey"></span><h3>Stalled</h3><p>Missing or unreadable documents become an explicit action.</p></article>
+          <article class="outcome reveal"><span class="outcome-dot purple"></span><h3>Needs review</h3><p>Values SDOC can't confirm go to a person, with the context intact.</p></article>
+          <article class="outcome reveal"><span class="outcome-dot grey"></span><h3>Blocked</h3><p>Missing or unreadable documents become an explicit action.</p></article>
         </div>
       </div>
     </section>

@@ -8,7 +8,7 @@
   <title>SDOC Administration</title>
   <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
   <link rel="stylesheet" href="styles.css?v=evidence4">
-  <script src="admin.js?v=polish3" defer></script>
+  <script src="admin.js?v=polish4" defer></script>
 </head>
 <body class="admin-page">
   <a class="skip-link" href="#analytics">Skip to analytics</a>
@@ -108,9 +108,9 @@
           <header><div><h2>SLA attention</h2><p>Observable risk signals; no assumed SLA target.</p></div></header>
           <dl class="metric-list">
             <div><dt>Waiting for documents</dt><dd id="waiting-cases">—</dd></div>
-            <div><dt>Overdue / stalled</dt><dd id="overdue-cases">—</dd></div>
+            <div><dt>Overdue / blocked</dt><dd id="overdue-cases">—</dd></div>
           </dl>
-          <p class="definition-note">A case becomes stalled only after the configured waiting timeout.</p>
+          <p class="definition-note">A case is blocked when a document is still missing after the waiting time, or an attachment fails the safety check.</p>
         </section>
         <section class="analytics-card">
           <header><div><h2>Discrepancy fields</h2><p>Fields most often recorded as different.</p></div></header>

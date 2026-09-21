@@ -32,10 +32,10 @@
       ]
     },
     review: {
-      id: 'CASE #SD-0250', kicker: 'HUMAN ATTENTION REQUIRED', title: '1 field unconfirmed',
-      desc: 'Conflicting source values require a reviewer to confirm the correct weight.', state: 'UNCONFIRMED', style: 'review', icon: 'i-eye',
+      id: 'CASE #SD-0250', kicker: 'HUMAN ATTENTION REQUIRED', title: '1 field needs review',
+      desc: 'Conflicting source values require a reviewer to confirm the correct weight.', state: 'NEEDS REVIEW', style: 'review', icon: 'i-eye',
       evidence: 'Source conflict · Decision not automated', action: 'Inspect review context',
-      rows: baseFields.map(([name, si, bl], i) => ({ name, si: i === 6 ? '18,500 / 18,800 KG' : si, bl: i === 6 ? '18,500 KG' : bl, result: i === 6 ? 'Unconfirmed' : 'Match', kind: i === 6 ? 'review' : 'good' })),
+      rows: baseFields.map(([name, si, bl], i) => ({ name, si: i === 6 ? '18,500 / 18,800 KG' : si, bl: i === 6 ? '18,500 KG' : bl, result: i === 6 ? 'Review' : 'Match', kind: i === 6 ? 'review' : 'good' })),
       docs: [
         { label: 'SHIPPING INSTRUCTION · CONFLICT', file: 'SI_0492.pdf · Pages 2–3', value: '18,500 / 18,800 KG', quote: 'PAGE 2: 18,500 KGS / PAGE 3: 18,800 KGS' },
         { label: 'DRAFT BILL OF LADING', file: 'Draft_BL_v2.pdf · Page 1', value: '18,500 KG', quote: 'GROSS WEIGHT: 18,500 KGS' }
