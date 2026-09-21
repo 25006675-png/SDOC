@@ -16,6 +16,8 @@ COPY . .
 
 WORKDIR /app/Averis1am
 # Tokens, sync state and attachment copies live here; Render's disk is reset on each deploy.
-RUN mkdir -p data
+# Cases imported from the demo folders (not from a mailbox) point at these files, and
+# no mailbox can re-download them, so they ship in the image.
+RUN mkdir -p data/attachments     && cp demo-data/attachments/*.pdf seed-attachments/*.pdf data/attachments/
 # Render supplies PORT; 10000 is its default when unset.
 CMD ["sh", "-c", "uvicorn sdoc.api:app --host 0.0.0.0 --port ${PORT:-10000}"]
