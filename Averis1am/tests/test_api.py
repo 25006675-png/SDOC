@@ -1,4 +1,5 @@
 """Backend API tests against the local repository implementation."""
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -154,6 +155,26 @@ class TestApi(unittest.TestCase):
 
         self.assertEqual(self.client.get("/api/mailbox/connect").status_code, 409)
         self.assertEqual(self.client.post("/api/mailbox/sync").status_code, 409)
+
+    def test_case_list_names_the_source_mailbox(self):
+        # Imported from a file: no mailbox, so no provider.
+        self.assertIsNone(self.client.get("/api/cases").json()["items"][0]["source_provider"])
+        self.store.ingest_result(
+            {"email_id": "api_002", "from": "ops@example.com", "subject": "Check 9API-10002",
+             "gmail_message_id": "18c0ffee", "attachments": []},
+            {"category": "BL_COMPARISON", "status": "OK", "review_reason": None,
+             "defect_fields": [], "has_defect": False, "decided_by": "rule"},
+            {}, now=200)
+        self.store.ingest_result(
+            {"email_id": "api_003", "from": "ops@example.com", "subject": "Check 9API-10003",
+             "provider": "outlook", "attachments": []},
+            {"category": "BL_COMPARISON", "status": "OK", "review_reason": None,
+             "defect_fields": [], "has_defect": False, "decided_by": "rule"},
+            {}, now=300)
+        items = {item["shipment_reference"]: item for item in self.client.get("/api/cases").json()["items"]}
+        self.assertEqual(items["9API-10002"]["source_provider"], "gmail")
+        # Demo data labelled with a provider but no message id.
+        self.assertEqual(items["9API-10003"]["source_provider"], "outlook")
 
     def test_invalid_state_and_missing_case(self):
         self.assertEqual(self.client.get("/api/cases", params={"state": "NOPE"}).status_code, 422)
@@ -311,6 +332,19 @@ class TestAccountAuth(unittest.TestCase):
             self.client.get("/api/mailbox/connect",
                             follow_redirects=False).status_code, 403)
 
+    def test_worker_sees_every_mailbox_but_cannot_connect_one(self):
+        # The header shows Gmail and Outlook side by side for everyone;
+        # linking an account stays with administrators.
+        self._login("worker", "worker-pass")
+        mailboxes = self.client.get("/api/mailboxes")
+        self.assertEqual(mailboxes.status_code, 200)
+        self.assertEqual({item["provider"] for item in mailboxes.json()["items"]},
+                         {"gmail", "outlook"})
+        for provider in ("gmail", "outlook"):
+            self.assertEqual(
+                self.client.get(f"/api/mailbox/{provider}/connect",
+                                follow_redirects=False).status_code, 403)
+
     def test_worker_may_still_refresh_the_queue(self):
         self._login("worker", "worker-pass")
         # Unconfigured, so it cannot succeed -- but it must not be forbidden.
@@ -357,6 +391,22 @@ class TestAccountAuth(unittest.TestCase):
         self.client.post("/logout", follow_redirects=False)
         worker = self._login("worker", "worker-pass", next_path="")
         self.assertEqual(worker.headers["location"], "/app/")
+
+    def test_demo_login_is_off_by_default(self):
+        self.assertNotIn("/login/demo", self.client.get("/login").text)
+        response = self.client.post("/login/demo", follow_redirects=False)
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(self.client.get("/api/cases").status_code, 401)
+
+    def test_demo_login_signs_in_as_the_worker_only(self):
+        with patch.dict(os.environ, {"SDOC_DEMO_LOGIN": "1"}):
+            self.assertIn("Continue as demo worker", self.client.get("/login").text)
+            response = self.client.post("/login/demo", follow_redirects=False)
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(response.headers["location"], "/app/")
+        self.assertEqual(self.client.get("/api/auth/status").json()["role"], "worker")
+        self.assertEqual(self.client.get("/api/cases").status_code, 200)
+        self.assertEqual(self.client.get("/api/metrics").status_code, 403)
 
     def test_login_page_does_not_force_the_worker_queue(self):
         page = self.client.get("/login").text

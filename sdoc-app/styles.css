@@ -44,7 +44,7 @@
 }
 
 * { box-sizing: border-box; }
-html, body { height: 100%; }
+html, body { height: 100%; overscroll-behavior-y: none; }
 body { margin: 0; background: var(--surface); color: var(--ink); font-size: 14px; line-height: 1.45; }
 button, input, select, textarea { font: inherit; color: inherit; }
 button, select { cursor: pointer; }
@@ -112,10 +112,9 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px
   padding: 12px 10px; background: var(--chrome); border-right: 1px solid var(--line);
 }
 .brand { display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 8px; margin-bottom: 10px; color: var(--ink); text-decoration: none; }
-.brand-name { font-size: 16px; font-weight: 700; letter-spacing: -.01em; }
-.brand-mark { width: 20px; height: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 2px; }
-.brand-mark i { border: 1.75px solid var(--accent); border-radius: 2px; }
-.brand-mark i:last-child { background: var(--accent); }
+/* The SDOC wordmark, as on the landing page: logo tile and italic lowercase name. */
+.brand-name { font-size: 20px; font-weight: 800; font-style: italic; letter-spacing: -.02em; }
+.brand-mark { width: 26px; height: 26px; flex: none; }
 .brand-dot { color: var(--accent); }
 
 .nav, .sidebar nav { display: grid; gap: 1px; }
@@ -191,7 +190,11 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px
 .mailbox-dot.is-warning { background: #c07a1d; }
 .mailbox-dot.is-online { background: var(--green); }
 .mailbox-icon { width: 16px; height: 16px; object-fit: contain; flex: none; }
-.mailbox-icon[hidden] { display: none; }
+/* One icon per connected mailbox, each with its own status dot in the corner. */
+.mailbox-providers { display: flex; align-items: center; gap: 8px; flex: none; }
+.mailbox-provider { position: relative; display: inline-flex; }
+.mailbox-provider .mailbox-dot { position: absolute; right: -3px; bottom: -2px; width: 7px; height: 7px; box-shadow: 0 0 0 1.5px var(--surface); }
+.mailbox-provider:only-child .mailbox-dot:only-child { position: static; }
 .file-icon { width: 16px; height: 16px; object-fit: contain; flex: none; margin-right: 6px; vertical-align: -3px; }
 
 /* --------------------------------------------------------------------------
@@ -260,6 +263,16 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px
 .detail-heading { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .detail-heading h2 { margin: 0; font-size: 20px; font-weight: 650; letter-spacing: -.015em; overflow-wrap: anywhere; }
 .detail-title p { margin: 4px 0 0; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+/* Mailbox provenance: a small provider icon in the queue, and a link back to
+   the original message wherever the email is shown. */
+.case-item-when { display: inline-flex; align-items: center; gap: 6px; flex: none; }
+.provider-icon { width: 14px; height: 14px; object-fit: contain; flex: none; }
+.provider-icon.is-imported { display: inline-grid; place-items: center; color: var(--muted); }
+.provider-icon.is-imported svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.source-link, .secondary-link, .primary-link { gap: 6px; }
+.source-link { display: inline-flex; align-items: center; margin-left: 10px; color: var(--accent-ink); font-weight: 600; text-decoration: none; white-space: nowrap; }
+.source-link:hover { text-decoration: underline; }
+.external-icon { width: 12px; height: 12px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .detail-head-row .btn-primary { flex: none; }
 
 .tab-list { display: flex; gap: 20px; margin-bottom: -1px; }
@@ -308,6 +321,7 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px
 .review-heading h3 { margin: 0; }
 .review-summary { margin: 0; font-size: 12.5px; font-weight: 600; color: var(--orange); }
 .review-summary.is-ok { color: var(--green); }
+.review-summary.is-review { color: var(--purple); }
 .review-grid { display: grid; gap: 16px; }
 @container (min-width: 1040px) {
   .review-grid { grid-template-columns: minmax(0, 1fr) minmax(340px, .8fr); align-items: start; }
@@ -322,15 +336,29 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px
 }
 .field-list-head { background: var(--chrome); border-bottom: 1px solid var(--line); color: var(--muted); font-size: 12px; font-weight: 600; }
 .field-row {
-  width: 100%; border: 0; border-bottom: 1px solid var(--line); background: var(--surface);
-  text-align: left; font-size: 13px; line-height: 1.4; transition: background-color .12s ease-out;
+  width: 100%; border: 0; background: transparent;
+  text-align: left; font-size: 13px; line-height: 1.4;
 }
-.field-row:last-child { border-bottom: 0; }
-.field-row:hover { background: var(--chrome); }
-.field-row.is-diff { background: #fff8f0; }
-.field-row.is-diff:hover { background: #fdf0e1; }
-.field-row[aria-current="true"] { background: var(--chrome); box-shadow: inset 0 0 0 1.5px var(--ink); }
-.field-row.is-diff[aria-current="true"] { background: #fdeede; box-shadow: inset 0 0 0 1.5px #d49a63; }
+/* A row is the expand button plus the selectable field; the line carries the
+   background so both read as one row. */
+.field-list-head { padding-left: 50px; }
+.field-line { display: grid; grid-template-columns: 36px minmax(0, 1fr); align-items: center; border-bottom: 1px solid var(--line); background: var(--surface); transition: background-color .12s ease-out; }
+.field-line:last-child { border-bottom: 0; }
+.field-line:hover { background: var(--chrome); }
+.field-line.is-diff { background: #fff8f0; }
+.field-line.is-diff:hover { background: #fdf0e1; }
+.field-line.is-review { background: #faf8fd; }
+.field-line.is-review:hover { background: #f3effa; }
+/* The selected row's frame takes its result colour: green, orange or purple. */
+.field-line:has(.field-row[aria-current="true"]) { background: var(--chrome); box-shadow: inset 0 0 0 1.5px var(--ink); }
+.field-line.is-match:has(.field-row[aria-current="true"]) { background: #f1f8f3; box-shadow: inset 0 0 0 1.5px #5d9c78; }
+.field-line.is-diff:has(.field-row[aria-current="true"]) { background: #fdeede; box-shadow: inset 0 0 0 1.5px #d49a63; }
+.field-line.is-review:has(.field-row[aria-current="true"]) { background: #f3effa; box-shadow: inset 0 0 0 1.5px #9580c0; }
+/* Quiet at rest (a light icon), a full button once the row is hovered or selected. */
+.field-expand { display: grid; place-items: center; width: 28px; height: 28px; margin-left: 8px; padding: 0; border: 1px solid transparent; border-radius: 6px; background: transparent; color: #a3a39d; cursor: zoom-in; transition: background-color .12s ease-out, border-color .12s ease-out, color .12s ease-out; }
+.field-line:hover .field-expand, .field-line:has(.field-row[aria-current="true"]) .field-expand, .field-expand:focus-visible { border-color: var(--line-strong); background: var(--surface); color: var(--ink-soft); }
+.field-line .field-expand:hover { border-color: var(--accent); color: var(--accent-ink); background: var(--accent-soft); }
+.field-expand svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .field-row:focus-visible { outline-offset: -3px; }
 .field-name { color: var(--ink-soft); font-weight: 600; }
 .field-value { overflow-wrap: anywhere; }

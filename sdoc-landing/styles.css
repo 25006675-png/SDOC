@@ -19,7 +19,8 @@
 }
 
 * { box-sizing: border-box; }
-html { scroll-behavior: smooth; scroll-padding-top: 88px; }
+/* No rubber-band past the dark footer: overscroll would show white page. */
+html { scroll-behavior: smooth; scroll-padding-top: 88px; overscroll-behavior-y: none; }
 body { margin: 0; background: #fff; color: var(--ink); font-family: var(--font); font-size: 16px; line-height: 1.6; -webkit-font-smoothing: antialiased; }
 a { color: inherit; text-decoration: none; }
 button { font: inherit; cursor: pointer; }
@@ -55,16 +56,13 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .mobile-nav[hidden] { display: none; }
 .mobile-nav a { padding: 12px 0; border-top: 1px solid var(--line); font-weight: 600; }
 
-/* Hero: the SI and BL as a 3D stack, framed by a tapering Averis crescent. */
+/* Hero: the SI and BL as a 3D stack over the port at dawn. */
 .hero { position: relative; isolation: isolate; display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); align-items: center; min-height: 680px; overflow: hidden; }
 .hero-stage { position: relative; align-self: stretch; min-height: 680px; display: grid; place-items: center; padding-right: 12%; }
-.hero-shape { position: absolute; inset: 0; width: 100%; height: 100%; }
-.hero-shape path { stroke: none; }
-.hero-field { fill: #f5f2ee; }
-.hero-crescent { transform-origin: 70% 50%; animation: crescent-in 1.1s cubic-bezier(.2, .8, .2, 1) both; }
-.stack { position: relative; width: 440px; height: 460px; perspective: 1400px; translate: -36px 0; }
+/* Smaller and over the water, so the cranes stay visible above the stack. */
+.stack { position: relative; width: 440px; height: 460px; perspective: 1400px; translate: -60px 110px; scale: .84; }
 .stack-3d { --rx: 0deg; --ry: 0deg; position: absolute; inset: 0; transform-style: preserve-3d;
-  transform: rotateX(calc(16deg + var(--ry))) rotateY(calc(24deg + var(--rx))) rotateZ(-3deg);
+  transform: rotateX(calc(10deg + var(--ry))) rotateY(calc(15deg + var(--rx))) rotateZ(-2deg);
   transition: transform .5s cubic-bezier(.2, .8, .2, 1); }
 .sheet { position: absolute; width: 270px; padding: 18px 18px 22px; border-radius: 10px; background: #fff; overflow: hidden;
   box-shadow: 0 1px 0 rgba(28, 28, 28, .04), 0 24px 48px -12px rgba(60, 30, 5, .28); animation: sheet-in 1s cubic-bezier(.2, .8, .2, 1) both; }
@@ -113,6 +111,14 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .text-link:hover { color: var(--orange-ink); }
 
 .hero-stage .stack, .hero-copy { z-index: 2; }
+
+/* The port at dawn, dissolving into white along a curve, with the water
+   sweeping on under the copy so the edge never reads as a straight cut. */
+.hero-bg { position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  background: url("assets/hero/port.webp") left center / cover no-repeat;
+  --fade: radial-gradient(ellipse 62% 125% at 0% 42%, #000 56%, transparent 100%),
+          radial-gradient(ellipse 115% 40% at 0% 100%, rgba(0, 0, 0, .85) 25%, transparent 100%);
+  -webkit-mask-image: var(--fade); mask-image: var(--fade); }
 @media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
   .hero .sheet, .hero .float-card { transition: transform .4s cubic-bezier(.22, 1, .36, 1); }
   .hero.is-exploring .sheet-si { transform: translate3d(5px, -5px, -6px) rotateZ(.75deg); }
@@ -123,7 +129,9 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
   /* The letters nearest the pointer lift, easing off with distance;
      app.js sets --lift (0 to 1) per letter as the cursor moves. */
   .mark-char { display: inline-block; transform: translateY(calc(var(--lift, 0) * -.16em)) scale(calc(1 + var(--lift, 0) * .1));
-    transform-origin: 50% 100%; transition: transform .22s cubic-bezier(.22, 1, .36, 1); }
+    transform-origin: 50% 100%; transition: transform .22s cubic-bezier(.22, 1, .36, 1), color .22s ease-out;
+    /* Ink warms through deep amber to brand orange as the lift rises. */
+    color: color-mix(in oklch, color-mix(in oklch, var(--orange-btn) calc(var(--lift, 0) * 100%), var(--orange-ink)) calc(var(--lift, 0) * 100%), var(--ink)); }
   .hero-actions .button-primary { position: relative; overflow: hidden; transition: transform .2s ease-out, background-color .15s; }
   .hero-actions .button-primary::after { content: ""; position: absolute; inset: -50% -30%; pointer-events: none;
     background: linear-gradient(110deg, transparent 40%, rgba(255, 255, 255, .3) 50%, transparent 60%);
@@ -133,7 +141,6 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
   .desktop-nav a::after { transform-origin: left; transition: transform .22s cubic-bezier(.22, 1, .36, 1); }
 }
 
-@keyframes crescent-in { from { opacity: 0; transform: scaleY(.6) translateX(-4%); } }
 @keyframes sheet-in { from { opacity: 0; translate: 40px 60px; } }
 @keyframes pop-in { from { opacity: 0; scale: .6; } }
 @keyframes bob { 50% { translate: 0 -10px; } }
@@ -229,6 +236,14 @@ html.js .steps li.reveal.is-visible { transition-delay: 0s; transition: transfor
 .outcome-dot.grey { background: #8a8a86; }
 
 /* Footer */
+/* Closing call to action: the ship heading out over open sea. White fades
+   into the haze at the top; the darker water meets the footer below. */
+.voyage { position: relative; isolation: isolate; display: flex; align-items: flex-start; min-height: 600px; padding: 110px 0 64px;
+  background: url("assets/hero/sea.webp") 20% center / cover no-repeat; }
+.voyage::before { content: ""; position: absolute; inset: 0 0 auto; z-index: -1; height: 45%; background: linear-gradient(#fff, rgba(255, 255, 255, 0)); }
+.voyage .wrap { width: 100%; }
+.voyage-copy { max-width: 520px; margin: 0 0 0 auto; }
+.voyage-copy p { margin-bottom: 30px; }
 .site-footer { padding: 28px 0; background: var(--ink); color: #c9c9c5; font-size: 14px; }
 .footer-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
 .brand-footer { color: #fff; font-size: 22px; }
@@ -258,12 +273,19 @@ html.js .steps li.reveal.is-visible { transition-delay: 0s; transition: transfor
 @media (max-width: 900px) {
   .desktop-nav, .header-actions { display: none; }
   .menu-toggle { display: grid; }
-  .hero { grid-template-columns: 1fr; }
+  .hero { grid-template-columns: minmax(0, 1fr); }
   .hero-copy { order: -1; padding: 48px 24px 8px; }
-  .hero-stage { min-height: 520px; padding-right: 0; background: linear-gradient(180deg, #fff, #f5f2ee); }
-  .hero-shape { display: none; }
+  .hero-stage { min-height: 520px; padding-right: 0; }
+  .stack { translate: -36px 0; scale: 1; }
+  /* Stacked layout: the port rises from the bottom, behind the documents. */
+  .hero-bg { background-size: auto 60%; background-position: 18% 100%;
+    --fade: linear-gradient(to top, #000 0 34%, transparent 50%); }
 }
 @media (max-width: 640px) {
+  /* Copy on white at the top, the ship on an open strip of sea below it. */
+  .voyage { min-height: 0; padding: 64px 0 300px; background-size: auto 420px; background-position: 30% bottom; }
+  .voyage::before { top: auto; bottom: 250px; height: 170px; }
+  .voyage-copy { margin: 0; }
   .header-row { height: 64px; }
   .brand { font-size: 24px; }
   .section { padding: 60px 0; }

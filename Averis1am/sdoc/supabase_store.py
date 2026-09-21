@@ -20,6 +20,7 @@ from .casework import (
     document_version,
     product_state,
     shipment_reference,
+    sources_by_case,
     stable_case_id,
 )
 from .analytics import build_metrics
@@ -124,6 +125,17 @@ class SupabaseStore:
         if state:
             params["state"] = f"eq.{state}"
         return self._request("GET", "/shipment_cases", params=params) or []
+
+    def case_sources(self):
+        """-> {case_id: 'gmail' | 'outlook'}, the mailbox each case came from."""
+        rows = self._request("GET", "/case_emails", params={
+            "select": "case_id,gmail:payload_json->>gmail_message_id,"
+                      "outlook:payload_json->>outlook_message_id,"
+                      "provider:payload_json->>provider",
+            "order": "created_at.asc,email_id.asc",
+        }) or []
+        return sources_by_case(
+            (r["case_id"], r.get("gmail"), r.get("outlook"), r.get("provider")) for r in rows)
 
     def list_routed_messages(self, category=None):
         params = {

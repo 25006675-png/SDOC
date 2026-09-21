@@ -6,16 +6,17 @@
   <meta name="theme-color" content="#f6f6f4">
   <meta name="description" content="SDOC operational analytics for shipping document verification.">
   <title>SDOC Administration</title>
-  <link rel="stylesheet" href="styles.css?v=evidence3">
-  <script src="admin.js?v=polish2" defer></script>
+  <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+  <link rel="stylesheet" href="styles.css?v=evidence4">
+  <script src="admin.js?v=polish3" defer></script>
 </head>
 <body class="admin-page">
   <a class="skip-link" href="#analytics">Skip to analytics</a>
   <div class="shell">
     <aside class="sidebar">
       <a class="brand" href="/app/" aria-label="SDOC workspace home">
-        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
-        <span class="brand-name">SDOC</span>
+        <img class="brand-mark" src="/assets/favicon.svg" alt="" width="26" height="26">
+        <span class="brand-name">sdoc</span>
       </a>
       <nav class="nav" aria-label="Product areas">
         <a class="nav-item" href="/app/" aria-label="Case queue" title="Case queue">
@@ -107,9 +108,9 @@
           <header><div><h2>SLA attention</h2><p>Observable risk signals; no assumed SLA target.</p></div></header>
           <dl class="metric-list">
             <div><dt>Waiting for documents</dt><dd id="waiting-cases">—</dd></div>
-            <div><dt>Overdue / blocked</dt><dd id="overdue-cases">—</dd></div>
+            <div><dt>Overdue / stalled</dt><dd id="overdue-cases">—</dd></div>
           </dl>
-          <p class="definition-note">A case becomes blocked only after the configured waiting timeout.</p>
+          <p class="definition-note">A case becomes stalled only after the configured waiting timeout.</p>
         </section>
         <section class="analytics-card">
           <header><div><h2>Discrepancy fields</h2><p>Fields most often recorded as different.</p></div></header>

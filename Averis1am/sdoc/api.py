@@ -53,6 +53,12 @@ def auth_enabled():
         "0", "off", "false", "no"}
 
 
+def demo_login_enabled():
+    """Off unless set: a one-click worker session for public demo deployments."""
+    return os.environ.get("SDOC_DEMO_LOGIN", "").strip().lower() in {
+        "1", "on", "true", "yes"}
+
+
 def user_store(request: Request):
     """Accounts belong to the app instance, not the module."""
     store = getattr(request.app.state, "users", None)
@@ -91,6 +97,10 @@ def login_page(error="", next_path=""):
         next_path = ""
     message = f'<p class="error" id="login-error" role="alert">{html.escape(error)}</p>' if error else ""
     safe_next = html.escape(next_path, quote=True)
+    demo = ('<form class="demo-login" method="post" action="/login/demo">'
+            '<button class="demo-button" type="submit">Continue as demo worker</button>'
+            '<p>Demo workspace with sample data. No password needed.</p></form>'
+            '<p class="divider"><span>or sign in</span></p>') if demo_login_enabled() else ""
     return f"""
     <!doctype html>
     <html lang="en">
@@ -100,8 +110,8 @@ def login_page(error="", next_path=""):
       <title>Sign in - SDOC</title>
       <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
       <style>
-        body {{ margin: 0; min-height: 100vh; display: grid; place-items: center; font-family: "Segoe UI", Arial, sans-serif; background: #f6f6f4; color: #1c1c1c; }}
-        main {{ width: min(1000px, calc(100vw - 40px)); box-sizing: border-box; display: grid; grid-template-columns: 1.1fr 1fr; border: 1px solid #e6e6e2; border-radius: 12px; overflow: hidden; background: #fff; }}
+        body {{ margin: 0; min-height: 100vh; font-family: "Segoe UI", Arial, sans-serif; background: #fff; color: #1c1c1c; }}
+        main {{ min-height: 100vh; display: grid; grid-template-columns: 55fr 45fr; background: #fff; }}
         .brand {{ display: inline-flex; align-items: center; gap: 10px; margin-bottom: 22px; color: #1c1c1c; font-weight: 800; font-size: 18px; text-decoration: none; }}
         .brand img {{ width: 28px; height: 28px; }}
         h1 {{ margin: 0 0 8px; font-size: 24px; font-style: italic; font-weight: 800; }} p {{ color: #666663; line-height: 1.6; }}
@@ -114,16 +124,12 @@ def login_page(error="", next_path=""):
         .error {{ color: #a2362e; background: #fbe8e6; padding: 10px 12px; border-radius: 6px; }} a {{ color: #9a4f0a; }}
         * {{ box-sizing: border-box; }}
         [hidden] {{ display: none !important; }}
-        body {{ padding: 32px 0; }}
-        .login-story {{ padding: 48px; background: #fdf0e3; display: flex; flex-direction: column; justify-content: space-between; }}
-        .login-story h2 {{ margin: 26px 0 16px; font-size: 40px; font-weight: 800; font-style: italic; letter-spacing: -.03em; line-height: 1.12; text-wrap: balance; }}
-        .login-story p {{ color: #694624; max-width: 34ch; font-size: 15px; }}
-        .login-proof {{ margin-top: 36px; background: white; border-radius: 8px; padding: 20px; }}
-        .login-proof p {{ font-size: 12px; margin: 0 0 14px; color: #666663; }}
-        .proof-row {{ display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; font-size: 13px; border-top: 1px solid #e6e6e2; }}
-        .proof-row strong {{ color: #26734a; }}
-        .proof-row:last-child strong {{ color: #9a4f0a; }}
-        .login-form {{ padding: 56px 44px 40px; align-self: center; }}
+        .login-story {{ padding: 48px 56px; display: flex; flex-direction: column;
+          /* The ship at sea fills the panel; cream rises from the bottom under the headline. */
+          background: linear-gradient(to top, #fdf0e3 0, rgba(253, 240, 227, .88) 24%, rgba(253, 240, 227, 0) 52%), url("/assets/hero/login.webp") 30% center / cover no-repeat, #fdf0e3; }}
+        .login-story h2 {{ margin: auto 0 12px; font-size: 52px; font-weight: 800; font-style: italic; letter-spacing: -.03em; line-height: 1.08; text-wrap: balance; }}
+        .login-story p {{ margin: 0; color: #694624; max-width: 38ch; font-size: 16px; }}
+        .login-form {{ width: 100%; max-width: 440px; padding: 56px 40px; align-self: center; justify-self: center; }}
         .login-form h1 {{ font-size: 28px; font-style: normal; letter-spacing: -.02em; }}
         .login-form > p {{ font-size: 14px; }}
         .login-form .form-intro {{ margin-bottom: 28px; }}
@@ -136,7 +142,12 @@ def login_page(error="", next_path=""):
         .login-form .login-help {{ margin-top: 20px; font-size: 12px; }}
         .login-form .login-back {{ margin-top: 32px; font-size: 13px; }}
         .error {{ font-size: 13px; }}
-        @media (max-width: 720px) {{ main {{ max-width: 440px; grid-template-columns: 1fr; }} .login-story {{ padding: 24px 28px; }} .login-story .brand {{ margin: 0; }} .login-story h2, .login-story > p, .login-proof {{ display: none; }} .login-form {{ padding: 32px 28px; }} }}
+        .demo-login button {{ margin-top: 0; background: #fff; color: #9a4f0a; border: 1.5px solid #d8741a; }}
+        .demo-login button:hover {{ background: #fdf0e3; }}
+        .demo-login p {{ margin: 8px 0 0; font-size: 12px; text-align: center; }}
+        .divider {{ display: flex; align-items: center; gap: 12px; margin: 22px 0 0; font-size: 12px; }}
+        .divider::before, .divider::after {{ content: ""; flex: 1; border-top: 1px solid #e6e6e2; }}
+        @media (max-width: 720px) {{ main {{ grid-template-columns: 1fr; grid-template-rows: auto 1fr; }} .login-story {{ padding: 24px 28px; min-height: 140px; background: url("/assets/hero/login.webp") 0 26% / 190% auto no-repeat, #fdf0e3; }} .login-story .brand {{ margin: 0; }} .login-story h2, .login-story > p {{ display: none; }} .login-form {{ align-self: start; padding: 32px 28px; }} }}
       </style>
     </head>
     <body><main>
@@ -144,12 +155,12 @@ def login_page(error="", next_path=""):
       <a class="brand" href="/"><img src="/assets/favicon.svg" alt="">SDOC</a>
       <h2>Every shipment.<br>Accounted for.</h2>
       <p>Compare shipping documents, trace every value and give your team a clear next step.</p>
-      <div class="login-proof" aria-label="Illustrative document check"><p>SI / Draft BL: example comparison</p><div class="proof-row"><span>Shipper</span><strong>Matches</strong></div><div class="proof-row"><span>Port of loading</span><strong>Matches</strong></div><div class="proof-row"><span>Gross weight</span><strong>Needs review</strong></div></div>
     </section>
     <section class="login-form" aria-labelledby="login-title">
       <h1 id="login-title">Welcome back</h1>
       <p class="form-intro">Sign in to your SDOC workspace.</p>
       {message}
+      {demo}
       <form id="login-form" method="post" action="/login">
         <label>Username<input name="username" type="text" autocomplete="username" autofocus required></label>
         <label for="login-password">Password</label><div class="password-field"><input id="login-password" name="password" type="password" autocomplete="current-password" required><button class="password-toggle" id="password-toggle" type="button" aria-label="Show password" aria-controls="login-password" aria-pressed="false" hidden>Show</button></div>
@@ -184,7 +195,7 @@ def wants_html(path):
 
 def is_public_path(path):
     return (
-        path in {"/", "/index.html", "/styles.css", "/app.js", "/health", "/login", "/api/auth/status"}
+        path in {"/", "/index.html", "/styles.css", "/app.js", "/health", "/login", "/login/demo", "/api/auth/status"}
         or path.startswith("/api/mailbox/oauth/callback")
         or path.startswith("/favicon")
         or path.startswith("/assets/")
@@ -193,7 +204,7 @@ def is_public_path(path):
 
 def required_role(path):
     if (path.startswith("/app/admin")
-            or path in {"/api/metrics", "/api/mailbox/connect", "/api/mailboxes"}
+            or path in {"/api/metrics", "/api/mailbox/connect"}
             or (path.startswith("/api/mailbox/") and path.endswith("/connect"))):
         return "admin"
     if path.startswith("/api/") or path.startswith("/app"):
@@ -425,6 +436,16 @@ def create_app(store=None, start_scheduler=True):
         response.set_cookie(AUTH_COOKIE, make_session(account["username"], role), httponly=True, samesite="lax", secure=os.environ.get("SDOC_COOKIE_SECURE", "0") == "1")
         return response
 
+    @app.post("/login/demo")
+    def login_demo(request: Request):
+        # Always the worker account, never admin; absent unless switched on.
+        account = user_store(request).get("worker") if demo_login_enabled() else None
+        if not account:
+            return JSONResponse({"detail": "Not Found"}, status_code=404)
+        response = RedirectResponse("/app/", status_code=303)
+        response.set_cookie(AUTH_COOKIE, make_session(account["username"], account["role"]), httponly=True, samesite="lax", secure=os.environ.get("SDOC_COOKIE_SECURE", "0") == "1")
+        return response
+
     @app.post("/logout")
     def logout():
         response = RedirectResponse("/", status_code=303)
@@ -450,7 +471,10 @@ def create_app(store=None, start_scheduler=True):
     def list_cases(state: str | None = Query(default=None)):
         if state and state not in CASE_STATES:
             raise HTTPException(422, f"state must be one of {sorted(CASE_STATES)}")
-        return {"items": app.state.store.list_cases(state=state)}
+        items = app.state.store.list_cases(state=state)
+        # Which mailbox each case came from, for the provider icon in the queue.
+        sources = app.state.store.case_sources() if items else {}
+        return {"items": [{**item, "source_provider": sources.get(item["case_id"])} for item in items]}
 
     @app.get("/api/routed-messages")
     def routed_messages(category: str | None = Query(default=None)):

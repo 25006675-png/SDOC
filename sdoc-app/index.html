@@ -6,16 +6,17 @@
   <meta name="theme-color" content="#f6f6f4">
   <meta name="description" content="SDOC worker workspace for shipping document verification.">
   <title>SDOC Workspace</title>
-  <link rel="stylesheet" href="styles.css?v=evidence3">
-  <script src="app.js?v=evidence4" defer></script>
+  <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+  <link rel="stylesheet" href="styles.css?v=evidence14">
+  <script src="app.js?v=evidence14" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#workspace">Skip to workspace</a>
   <div class="shell">
     <aside class="sidebar">
       <a class="brand" href="/app/" aria-label="SDOC workspace home">
-        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
-        <span class="brand-name">SDOC</span>
+        <img class="brand-mark" src="/assets/favicon.svg" alt="" width="26" height="26">
+        <span class="brand-name">sdoc</span>
       </a>
       <nav class="nav" aria-label="Workspace views">
         <button class="nav-item is-active" data-view="action" type="button">
@@ -65,8 +66,7 @@
         </label>
         <div class="topbar-actions">
           <div class="mailbox-strip" id="mailbox-strip" role="status">
-            <span class="mailbox-dot" id="mailbox-dot"></span>
-            <img class="mailbox-icon" id="mailbox-icon" alt="" hidden>
+            <span class="mailbox-providers" id="mailbox-providers"></span>
             <span class="mailbox-text">
               <strong id="mailbox-title">Mailbox</strong>
               <span id="mailbox-sync">Checking</span>
@@ -90,8 +90,8 @@
             <select class="select-sm" id="state-filter" aria-label="Filter cases by state">
               <option value="ACTION">All actions</option>
               <option value="DISCREPANCY">Discrepancy</option>
-              <option value="NEEDS_REVIEW">Needs review</option>
-              <option value="BLOCKED">Blocked</option>
+              <option value="NEEDS_REVIEW">Unconfirmed</option>
+              <option value="BLOCKED">Stalled</option>
               <option value="WAITING">Waiting for documents</option>
               <option value="VERIFIED">Verified</option>
               <option value="ALL">All states</option>

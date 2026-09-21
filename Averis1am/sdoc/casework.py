@@ -158,6 +158,24 @@ def shipment_reference(email):
     return f"EMAIL:{email_id}".upper()
 
 
+def sources_by_case(rows):
+    """Rows of (case_id, gmail id, outlook id, provider), oldest first -> {case_id: provider}.
+
+    The newest email with a mailbox id wins. An email imported from a file has
+    no id but may carry a ``provider`` label (demo data); anything else is left
+    out.
+    """
+    sources = {}
+    for case_id, gmail_id, outlook_id, provider in rows:
+        if gmail_id:
+            sources[case_id] = "gmail"
+        elif outlook_id:
+            sources[case_id] = "outlook"
+        elif provider in {"gmail", "outlook"}:
+            sources[case_id] = provider
+    return sources
+
+
 def stable_case_id(reference):
     digest = hashlib.sha256(reference.encode("utf-8")).hexdigest()[:12]
     return f"case_{digest}"
@@ -528,6 +546,14 @@ class CaseStore:
             args = (state,)
         sql += " ORDER BY updated_at DESC, case_id"
         return [dict(row) for row in self.con.execute(sql, args)]
+
+    def case_sources(self):
+        """-> {case_id: 'gmail' | 'outlook'}, the mailbox each case came from."""
+        return sources_by_case(self.con.execute(
+            "SELECT case_id, json_extract(payload_json, '$.gmail_message_id'), "
+            "json_extract(payload_json, '$.outlook_message_id'), "
+            "json_extract(payload_json, '$.provider') "
+            "FROM case_emails ORDER BY created_at, email_id"))
 
     def list_routed_messages(self, category=None):
         sql = "SELECT email_id,sender,subject,category,payload_json,created_at FROM routed_messages"

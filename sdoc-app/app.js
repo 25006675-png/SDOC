@@ -68,8 +68,10 @@
     VERIFIED: '<circle cx="8" cy="8" r="6.5" fill="currentColor"/><path d="m5.4 8.1 1.8 1.8 3.5-3.6" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>'
   };
 
-  // Visible names only; the backend state names are unchanged.
-  const STATE_LABELS = { WAITING: 'Waiting for documents' };
+  // Visible names only; the backend state names are unchanged. Every state
+  // in the action queue needs a person, so the names say what is wrong:
+  // a value SDOC could not confirm, or a case stalled on a document.
+  const STATE_LABELS = { WAITING: 'Waiting for documents', NEEDS_REVIEW: 'Unconfirmed', BLOCKED: 'Stalled' };
 
   function stateBadge(value) {
     const badge = element('span', `state state-${value.toLowerCase()}`);
@@ -119,7 +121,7 @@
     if (!payload) return '';
     const id = payload.gmail_thread_id || payload.thread_id || payload.gmail_message_id;
     if (!id) return payload.message_url || '';
-    const user = payload.gmail_account || account || state.mailbox?.account;
+    const user = payload.gmail_account || account || gmailAccount();
     if (user) return `https://mail.google.com/mail/?authuser=${encodeURIComponent(user)}#all/${id}`;
     return `https://mail.google.com/mail/u/0/#all/${id}`;
   }
@@ -172,51 +174,75 @@
     return raw.split(/\r?\n/)[0].slice(0, 140);
   }
 
-  function renderMailbox(mailbox) {
-    const providerName = mailbox.provider === 'outlook' ? 'Outlook' : mailbox.provider === 'gmail' ? 'Gmail' : 'Mailbox';
-    state.mailbox = mailbox;
-    const icon = $('mailbox-icon');
-    icon.hidden = !['gmail', 'outlook'].includes(mailbox.provider);
-    if (!icon.hidden) icon.src = `/assets/icons/${mailbox.provider}.webp`;
-    const ready = mailbox.configured && mailbox.connected;
-    $('mailbox-dot').classList.toggle('is-online', ready);
-    $('mailbox-dot').classList.toggle('is-warning', mailbox.configured && !mailbox.connected);
-    $('mailbox-title').textContent = ready ? providerName
-      : mailbox.configured ? `${providerName} not connected` : `${providerName} not set up`;
-    const detail = $('mailbox-detail');
-    const error = mailbox.last_error ? summariseError(mailbox.last_error) : '';
+  const PROVIDER_NAMES = { gmail: 'Gmail', outlook: 'Outlook' };
+  const providerName = key => PROVIDER_NAMES[key] || 'Mailbox';
+  const isReady = mailbox => mailbox.configured && mailbox.connected;
+
+  function gmailAccount() {
+    return state.mailboxes?.find(item => item.provider === 'gmail')?.account;
+  }
+
+  function renderMailbox(items) {
+    // Every mailbox that is set up, side by side: SDOC reads them all at once.
+    const shown = items.filter(item => item.configured || item.connected);
+    const mailboxes = shown.length ? shown : items.slice(0, 1);
+    state.mailboxes = items;
+    state.mailbox = mailboxes.find(isReady) || mailboxes[0] || null;
+
+    $('mailbox-providers').replaceChildren(...mailboxes.map(item => {
+      const chip = element('span', 'mailbox-provider');
+      chip.title = `${providerName(item.provider)}: ${isReady(item) ? item.account || 'connected'
+        : item.configured ? 'not connected' : 'not set up'}`;
+      if (PROVIDER_NAMES[item.provider]) {
+        const icon = element('img', 'mailbox-icon');
+        icon.src = `/assets/icons/${item.provider}.webp`;
+        icon.alt = '';
+        chip.append(icon);
+      }
+      const dot = element('span', 'mailbox-dot');
+      dot.classList.toggle('is-online', isReady(item));
+      dot.classList.toggle('is-warning', item.configured && !item.connected);
+      chip.append(dot);
+      return chip;
+    }));
+
+    const ready = mailboxes.filter(isReady);
+    const down = mailboxes.filter(item => !isReady(item));
+    $('mailbox-title').textContent = down.length
+      ? `${down.map(item => providerName(item.provider)).join(' and ')} ${down.some(item => item.configured) ? 'not connected' : 'not set up'}`
+      : ready.length > 1 ? `${ready.length} mailboxes` : providerName(ready[0]?.provider);
+    const failed = mailboxes.find(item => item.last_error);
+    const error = failed ? `${providerName(failed.provider)}: ${summariseError(failed.last_error)}` : '';
     // Only a failure earns visible space in the header; routine guidance
     // stays in the tooltip.
+    const detail = $('mailbox-detail');
     detail.textContent = error;
     const strip = detail.closest('.mailbox-strip');
     strip?.classList.toggle('has-error', Boolean(error));
-    $('mailbox-query').textContent = mailbox.query ? `Query: ${mailbox.query}` : 'No query active';
-    $('mailbox-sync').textContent = mailbox.last_sync_at
-      ? `Synced ${formatTime(mailbox.last_sync_at)}`
-      : ready ? 'Not synced yet' : '';
+    $('mailbox-query').textContent = mailboxes.map(item => item.query ? `${providerName(item.provider)} query: ${item.query}` : '').filter(Boolean).join('. ');
+    const lastSync = Math.max(0, ...ready.map(item => item.last_sync_at || 0));
+    $('mailbox-sync').textContent = lastSync ? `Synced ${formatTime(lastSync)}` : ready.length ? 'Not synced yet' : '';
     if (strip) {
-      strip.title = [
-        ready && mailbox.account ? `Connected: ${mailbox.account}` : '',
-        mailbox.last_sync_at ? `Last sync ${formatTime(mailbox.last_sync_at)}, ${mailbox.processed || 0} processed` : '',
-        mailbox.last_error || mailbox.next_action || ''
-      ].filter(Boolean).join('\n');
+      strip.title = mailboxes.map(item => [
+        `${providerName(item.provider)}: ${isReady(item) ? `connected${item.account ? ` as ${item.account}` : ''}` : item.configured ? 'not connected' : 'not set up'}`,
+        item.last_sync_at ? `  Last sync ${formatTime(item.last_sync_at)}, ${item.processed || 0} processed` : '',
+        item.last_error ? `  ${item.last_error}` : ''
+      ].filter(Boolean).join('\n')).join('\n');
     }
-    if ($('mailbox-connect')) $('mailbox-connect').disabled = !mailbox.configured;
-    if ($('mailbox-sync-button')) $('mailbox-sync-button').disabled = !ready;
   }
 
   async function loadMailbox() {
     try {
-      renderMailbox(await api('/api/mailbox/status'));
+      renderMailbox((await api('/api/mailboxes')).items);
     } catch (error) {
-      renderMailbox({
+      renderMailbox([{
         configured: false,
         connected: false,
         query: '',
         processed: 0,
         last_error: error.message,
         next_action: 'Mailbox status unavailable.'
-      });
+      }]);
     }
   }
 
@@ -225,7 +251,8 @@
     button.disabled = true;
     button.textContent = 'Syncing';
     try {
-      renderMailbox(await api('/api/mailbox/sync', { method: 'POST' }));
+      await api('/api/mailbox/sync', { method: 'POST' });
+      await loadMailbox();
       await loadWorkspace({ preserveSelection: true });
     } catch (error) {
       $('mailbox-detail').textContent = error.message;
@@ -345,19 +372,66 @@
       }
       const reason = stateReason(item.state, item.state_reason).text;
       list.append(caseRow(item.shipment_reference, formatTime(item.updated_at), stateBadge(item.state), reason,
-        item.case_id === state.selectedId, () => openCase(item.case_id)));
+        item.case_id === state.selectedId, () => openCase(item.case_id), item.source_provider));
     });
     list.scrollTop = scrollTop;
   }
 
-  function caseRow(title, time, badge, meta, selected, onClick) {
+  function providerIcon(provider, className = 'provider-icon') {
+    // The mailbox a case arrived through; the name rides along for screen readers.
+    if (!PROVIDER_NAMES[provider]) return null;
+    const icon = element('img', className);
+    icon.src = `/assets/icons/${provider}.webp`;
+    icon.alt = PROVIDER_NAMES[provider];
+    icon.title = `From ${PROVIDER_NAMES[provider]}`;
+    return icon;
+  }
+
+  function importedIcon() {
+    // Cases loaded from files never passed through a mailbox; say so rather
+    // than borrow a provider's logo.
+    const icon = element('span', 'provider-icon is-imported');
+    icon.title = 'Imported from files';
+    icon.setAttribute('role', 'img');
+    icon.setAttribute('aria-label', 'Imported from files');
+    icon.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v7M5 6.5 8 9.5l3-3M2.5 9.5v4h11v-4"/></svg>';
+    return icon;
+  }
+
+  function emailSource(payload) {
+    // -> { provider, url } for opening the original message, or null.
+    const url = gmailUrl(payload, gmailAccount());
+    if (!url) return null;
+    const provider = payload.gmail_message_id || payload.gmail_thread_id ? 'gmail'
+      : payload.outlook_message_id ? 'outlook' : payload.provider;
+    return { provider, url };
+  }
+
+  function openEmailLink(source, className) {
+    const anchor = element('a', className);
+    anchor.href = source.url;
+    anchor.target = '_blank';
+    anchor.rel = 'noreferrer';
+    const icon = providerIcon(source.provider, 'provider-icon');
+    if (icon) { icon.alt = ''; icon.removeAttribute('title'); anchor.append(icon); }
+    anchor.append(document.createTextNode(`Open in ${PROVIDER_NAMES[source.provider] || 'mailbox'}`));
+    anchor.insertAdjacentHTML('beforeend',
+      '<svg class="external-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 3.5h-3v9h9v-3M9.5 2.5h4v4M13.5 2.5 7.5 8.5"/></svg>');
+    anchor.setAttribute('aria-label', `Open the original email in ${PROVIDER_NAMES[source.provider] || 'the mailbox'} (new tab)`);
+    return anchor;
+  }
+
+  function caseRow(title, time, badge, meta, selected, onClick, provider) {
     // Two lines, like a mail list: what it is and when, then its state and why.
     const button = element('button', 'case-item');
     button.type = 'button';
     button.classList.toggle('is-selected', selected);
     button.setAttribute('aria-pressed', String(selected));
     const top = element('div', 'case-item-top');
-    top.append(element('strong', '', title), element('time', '', time));
+    const when = element('span', 'case-item-when');
+    when.append(providerIcon(provider) || importedIcon());
+    when.append(element('time', '', time));
+    top.append(element('strong', '', title), when);
     const bottom = element('div', 'case-item-bottom');
     bottom.append(badge, element('span', 'case-item-meta', meta));
     button.append(top, bottom);
@@ -733,7 +807,11 @@
     const meta = email
       ? `${email.sender || 'Unknown sender'} · Received ${formatTime(email.received_at || email.created_at)}`
       : actionCopy(data.state);
-    title.append(heading, element('p', '', meta));
+    const metaLine = element('p', 'detail-meta', meta);
+    // The worker's next step is often a reply, which starts in the mailbox.
+    const source = email && emailSource(email.payload_json || {});
+    if (source) metaLine.append(openEmailLink(source, 'source-link'));
+    title.append(heading, metaLine);
     headRow.append(title);
     head.append(headRow);
 
@@ -807,13 +885,9 @@
         element('strong', '', email.subject || 'No subject'),
         element('span', '', `${email.sender || 'Unknown sender'} · ${formatTime(email.received_at || email.created_at)}`)
       );
-      const link = gmailUrl(payload, state.mailbox?.account);
-      if (link) {
-        const anchor = element('a', 'secondary-link', 'Open email');
-        anchor.href = link;
-        anchor.target = '_blank';
-        anchor.rel = 'noreferrer';
-        row.append(content, anchor);
+      const source = emailSource(payload);
+      if (source) {
+        row.append(content, openEmailLink(source, 'secondary-link'));
       } else {
         row.append(content, element('span', 'source-email-id', email.email_id));
       }
@@ -902,7 +976,7 @@
   function fieldStatus(evidence) {
     if (evidence.match === true) return { word: 'Match', glyph: '✓', tone: 'match' };
     if (evidence.match === false) return { word: 'Different', glyph: '!', tone: 'diff' };
-    return { word: 'Needs review', glyph: '?', tone: 'review' };
+    return { word: 'Unconfirmed', glyph: '?', tone: 'review' };
   }
 
   function statusChip(evidence) {
@@ -1305,9 +1379,9 @@
     const heading = element('div', 'review-heading');
     heading.append(
       element('h3', '', 'Field comparison'),
-      element('p', differing || pending ? 'review-summary' : 'review-summary is-ok',
+      element('p', differing ? 'review-summary' : pending ? 'review-summary is-review' : 'review-summary is-ok',
         differing ? `${differing} of ${order.length} fields differ`
-          : pending ? `${pending} of ${order.length} fields need review`
+          : pending ? `${pending} of ${order.length} fields unconfirmed`
             : `All ${order.length} fields match`)
     );
     section.append(heading);
@@ -1345,7 +1419,24 @@
       if (evidence.corrected) result.append(element('span', 'corrected-tag', 'Corrected'));
       row.append(element('span', 'field-name', fieldLabel(field)), si, bl, result);
       row.addEventListener('click', () => select(field));
-      list.append(row);
+      // The way into the full comparison, one click from every row; the
+      // pane's own button is easy to miss below the documents.
+      // The row's colour is its result, the same tone as its chip and its evidence boxes.
+      const line = element('div', `field-line is-${fieldStatus(evidence).tone}`);
+      const hasPdf = SIDES.some(([side]) => /\.pdf$/i.test(sourceFor(evidence, side, comparison.evidence).document || ''));
+      if (hasPdf) {
+        const expand = element('button', 'field-expand');
+        expand.type = 'button';
+        expand.title = 'Inspect evidence';
+        expand.setAttribute('aria-label', `Inspect evidence for ${fieldLabel(field)}`);
+        expand.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M9.5 2.5h4v4M13.5 2.5 9 7M6.5 13.5h-4v-4M2.5 13.5 7 9"/></svg>';
+        expand.addEventListener('click', () => { select(field); inspectEvidence(context, expand); });
+        line.append(expand);
+      } else {
+        line.append(element('span', 'field-expand-gap'));
+      }
+      line.append(row);
+      list.append(line);
       return row;
     });
 
@@ -1399,7 +1490,7 @@
       } else {
         const copy = {
           WAITING: 'Field comparison will appear once the required SI and draft BL are available.',
-          BLOCKED: 'Field comparison is blocked until the unresolved document issue is cleared.',
+          BLOCKED: 'Field comparison is on hold until the document issue is cleared.',
           NEEDS_REVIEW: 'Field evidence is incomplete and needs a reviewer decision.',
           DISCREPANCY: 'Field evidence is not available for this discrepancy record.'
         }[caseState] || 'Field evidence is not available for this case.';
@@ -1597,7 +1688,7 @@
               other.setAttribute('aria-pressed', String(other === row));
             });
             renderRoutedDetail(item);
-          });
+          }, emailSource(item.payload_json || {})?.provider);
         list.append(row);
         return row;
       });
@@ -1638,14 +1729,8 @@
       facts.append(row);
     });
     section.append(facts);
-    const link = gmailUrl(payload, state.mailbox?.account);
-    if (link) {
-      const anchor = element('a', 'primary-link', 'Open original email');
-      anchor.href = link;
-      anchor.target = '_blank';
-      anchor.rel = 'noreferrer';
-      section.append(anchor);
-    }
+    const source = emailSource(payload);
+    if (source) section.append(openEmailLink(source, 'primary-link'));
     body.append(section);
     detail.replaceChildren(head, body);
   }
