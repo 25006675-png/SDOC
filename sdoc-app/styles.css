@@ -419,26 +419,45 @@ main { min-width: 0; padding: 0 30px 34px; }
 }
 @media (max-width: 900px) { .correction-form { grid-template-columns: 1fr; } }
 
-/* Signed-in user chip in the sidebar. */
+/* Signed-in user chip. The sidebar is dark, and both this and .sidebar-foot
+   want the trailing space -- give it to this one only, or they split it and
+   the chip floats in the middle of the column. */
 .sidebar-user {
-  display: flex; align-items: center; gap: 10px; padding: 12px 14px;
-  margin: 0 12px 10px; border: 1px solid #d5e0da; border-radius: 10px;
-  background: white;
+  margin-top: auto;
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px 10px 12px;
+  border-top: 1px solid #263a40;
 }
+.sidebar-user + .sidebar-foot { margin-top: 0; border-top: 0; padding-top: 12px; }
 .user-avatar {
-  display: grid; place-items: center; width: 32px; height: 32px; flex: none;
-  border-radius: 50%; background: #1e5940; color: white; font-weight: 800;
-  font-size: 14px;
+  display: grid; place-items: center; width: 30px; height: 30px; flex: none;
+  border-radius: 50%; background: var(--lime); color: #0d2b22;
+  font-weight: 800; font-size: 13px;
 }
 .user-meta { display: flex; flex-direction: column; min-width: 0; flex: 1; }
-.user-meta strong { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.user-meta small { color: #62716a; font-size: 11px; }
-.signout-button {
-  border: 1px solid #d3c4c4; border-radius: 6px; background: white;
-  color: #93342b; font-size: 11px; font-weight: 700; padding: 5px 9px;
-  cursor: pointer;
+.user-meta strong {
+  font-size: 12px; color: #e3ece9;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.signout-button:hover { background: #fbeceb; }
+.user-meta small { margin-top: 2px; color: #78908e; font-size: 11px; }
+.signout-button {
+  flex: none; border: 1px solid #3a5158; border-radius: 6px;
+  background: transparent; color: #cfe0dc; font-size: 11px; font-weight: 700;
+  padding: 5px 9px; cursor: pointer;
+}
+.signout-button:hover { background: #ffffff10; color: white; }
+
+/* Worker mailbox status: one line of context, above the work but not in
+   front of it. Administration of the connection lives in the admin view. */
+.mailbox-strip {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-bottom: 14px; padding: 9px 14px;
+  border: 1px solid #dbe4df; border-radius: 9px; background: white;
+  font-size: 12.5px; color: #4c5b55;
+}
+.mailbox-strip strong { font-size: 13px; color: var(--ink); }
+.mailbox-strip .mailbox-hint { color: #8a9891; margin-left: auto; text-align: right; }
+@media (max-width: 720px) { .mailbox-strip .mailbox-hint { display: none; } }
 
 /* Admin sections that are demo surfaces, not wired to the backend. */
 .admin-section {

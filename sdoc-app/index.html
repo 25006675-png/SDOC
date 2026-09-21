@@ -73,18 +73,12 @@
         <div><span>Routed mail</span><strong id="metric-routed">0</strong></div>
       </section>
 
-      <section class="mailbox-panel" aria-label="Mailbox status">
-        <div class="mailbox-status">
-          <span class="mailbox-dot" id="mailbox-dot"></span>
-          <div>
-            <h2 id="mailbox-title">Mailbox status unavailable</h2>
-            <p id="mailbox-detail">An administrator connects the shared operations mailbox. Workers process the queue it creates.</p>
-          </div>
-        </div>
-        <div class="mailbox-meta">
-          <span id="mailbox-query">No query active</span>
-          <span id="mailbox-sync">Never synced</span>
-        </div>
+      <section class="mailbox-strip" aria-label="Mailbox status">
+        <span class="mailbox-dot" id="mailbox-dot"></span>
+        <strong id="mailbox-title">Mailbox status unavailable</strong>
+        <span id="mailbox-sync">Never synced</span>
+        <span class="mailbox-hint" id="mailbox-detail">An administrator connects the shared mailbox.</span>
+        <span class="sr-only" id="mailbox-query"></span>
       </section>
 
       <details class="routed-preview" id="routed-preview">
