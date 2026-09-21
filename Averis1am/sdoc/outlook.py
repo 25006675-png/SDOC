@@ -161,6 +161,25 @@ class OutlookSource:
             attachments.append(path)
 
 
+def _fetch_account(source, attempts=3, sleep=time.sleep):
+    """-> the signed-in address, or None when Graph keeps failing.
+
+    Graph's /me can answer 504 moments after sign-in. The token is already
+    valid by then, so a slow profile lookup must not undo the connection.
+    Client errors (4xx) are real problems and still raise.
+    """
+    for attempt in range(attempts):
+        try:
+            profile = source.profile()
+            return profile.get("mail") or profile.get("userPrincipalName")
+        except (httpx.TransportError, httpx.HTTPStatusError) as exc:
+            if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code < 500:
+                raise
+            if attempt + 1 < attempts:
+                sleep(2 ** attempt)
+    return None
+
+
 class OutlookSyncService:
     def __init__(self, store, cfg=None, client=None, ledger=None):
         self.store = store
@@ -246,11 +265,13 @@ class OutlookSyncService:
             token["refresh_token"] = existing["refresh_token"]
         _json_save(self.cfg.token_path, token)
         with OutlookSource(token["access_token"], self.cfg.query, self.cfg.max_results, attachment_root=self.cfg.attachment_root) as source:
-            profile = source.profile()
+            account = _fetch_account(source)
         data.pop("oauth_state", None)
         data["oauth_states"] = [item for item in data.get("oauth_states", []) if item != state]
-        data["account"] = profile.get("mail") or profile.get("userPrincipalName")
-        data["last_error"] = None
+        data["account"] = account
+        data["last_error"] = None if account else (
+            "Connected. Microsoft did not return the account name yet; "
+            "it is filled in on the next sync.")
         _json_save(self.cfg.state_path, data)
         return self.status()
 
@@ -288,6 +309,8 @@ class OutlookSyncService:
             if verifier:
                 case_cfg["verifier"] = verifier
             with OutlookSource(token, self.cfg.query, self.cfg.max_results, attachment_root=self.cfg.attachment_root) as source:
+                if not state.get("account"):
+                    state["account"] = _fetch_account(source, attempts=1)
                 service = CaseService(self.store, case_cfg)
                 for email in source.emails():
                     message_id = email.get("outlook_message_id")

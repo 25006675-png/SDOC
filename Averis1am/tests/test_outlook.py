@@ -8,7 +8,7 @@ from urllib.parse import parse_qs, urlparse
 import httpx
 
 from sdoc.mailbox import create_mailbox_sync
-from sdoc.outlook import OutlookConfig, OutlookSource, OutlookSyncService
+from sdoc.outlook import OutlookConfig, OutlookSource, OutlookSyncService, _fetch_account
 
 
 class TestOutlookSource(unittest.TestCase):
@@ -114,6 +114,40 @@ class TestMailboxFactory(unittest.TestCase):
             self.assertEqual(service.status()["provider"], "outlook")
         finally:
             service.close()
+
+
+
+class _Profile:
+    """Stands in for OutlookSource.profile(): replays responses in order."""
+
+    def __init__(self, *outcomes):
+        self.outcomes = list(outcomes)
+        self.calls = 0
+
+    def profile(self):
+        self.calls += 1
+        outcome = self.outcomes.pop(0)
+        if isinstance(outcome, int):
+            request = httpx.Request("GET", "https://graph.microsoft.com/v1.0/me")
+            raise httpx.HTTPStatusError("graph", request=request,
+                                        response=httpx.Response(outcome, request=request))
+        return outcome
+
+
+class TestFetchAccount(unittest.TestCase):
+    def test_a_gateway_timeout_is_retried(self):
+        source = _Profile(504, {"mail": "ops@example.com"})
+        self.assertEqual(_fetch_account(source, sleep=lambda _: None), "ops@example.com")
+        self.assertEqual(source.calls, 2)
+
+    def test_persistent_server_errors_leave_the_account_unknown(self):
+        # The token is already valid; a slow profile lookup must not fail the connect.
+        source = _Profile(504, 503, 502)
+        self.assertIsNone(_fetch_account(source, sleep=lambda _: None))
+
+    def test_client_errors_are_not_hidden(self):
+        with self.assertRaises(httpx.HTTPStatusError):
+            _fetch_account(_Profile(401), sleep=lambda _: None)
 
 
 if __name__ == "__main__":
