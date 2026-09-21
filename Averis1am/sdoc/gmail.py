@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import base64
-import json
 import os
 import re
 import secrets
@@ -14,6 +13,7 @@ from urllib.parse import urlencode
 import httpx
 import truststore
 
+from . import runtime_state
 from .casework import CaseService
 from .budget import BudgetExceeded, SpendLedger
 from .classify import GeminiEmailClassifier
@@ -35,16 +35,13 @@ def _native_tls():
 
 
 def _json_load(path, default):
-    try:
-        return json.loads(Path(path).read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError):
-        return default
+    # Tokens and sync state: files locally, a database row when the disk is
+    # disposable (see runtime_state).
+    return runtime_state.load(path, default)
 
 
 def _json_save(path, data):
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
+    runtime_state.save(path, data)
 
 
 def _b64decode(data):

@@ -343,13 +343,16 @@ def create_app(store=None, start_scheduler=True):
                 while True:
                     await asyncio.sleep(max(30, mailbox_interval))
                     for service in app.state.mailboxes.values():
-                        status = service.status()
-                        if not status["configured"] or not status["connected"]:
-                            continue
+                        # Inside the try: status() reads stored state, and one
+                        # failed read must not end the loop for good.
                         try:
+                            status = await asyncio.to_thread(service.status)
+                            if not status["configured"] or not status["connected"]:
+                                continue
                             await asyncio.to_thread(service.sync_once)
                         except Exception as exc:
-                            service.record_error(exc)
+                            with suppress(Exception):
+                                service.record_error(exc)
 
             if mailbox_interval > 0:
                 mailbox_task = asyncio.create_task(mailbox_loop())

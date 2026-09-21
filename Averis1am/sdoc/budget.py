@@ -9,10 +9,11 @@ Counts persist to disk so a restart does not reset an attacker's allowance.
 Refusal is loud: the caller stops and the message waits for a human, rather
 than processing continuing quietly at a lower quality.
 """
-import json
 import os
 import time
 from pathlib import Path
+
+from . import runtime_state
 
 
 class BudgetExceeded(RuntimeError):
@@ -47,16 +48,11 @@ class SpendLedger:
         self.per_day = per_day or _int_env("SDOC_MAX_MESSAGES_DAY", 2000)
 
     def _load(self):
-        try:
-            data = json.loads(self.path.read_text(encoding="utf-8"))
-        except (FileNotFoundError, json.JSONDecodeError):
-            return {}
+        data = runtime_state.load(self.path, {})
         return data if isinstance(data, dict) else {}
 
     def _save(self, data):
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(data, indent=2, sort_keys=True),
-                             encoding="utf-8")
+        runtime_state.save(self.path, data)
 
     def _today(self, data, now):
         day = _day(now)
