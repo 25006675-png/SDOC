@@ -71,14 +71,16 @@ Each email goes through these stages:
 
 | # | Stage | Kind | What happens |
 |---|---|---|---|
-| 1 | Mailbox sync | Deterministic | Every 60 s, fetch new mail with attachments from each connected mailbox |
-| 2 | Classification + case engine | AI-assisted | Rules first, Gemini for what rules can't settle; group by shipment reference |
-| 3 | Security gate | Deterministic | Size, magic bytes, encryption, page count and archive expansion checked **before** any parsing |
-| 4 | Document processing | Deterministic, isolated | PDF, DOCX, XLSX and text read in helper processes with a per-file timeout; OCR fallback for scans |
-| 5 | Validation + targeted retry | Deterministic | Check required fields are present and parseable; at most **one** recovery attempt |
-| 6 | Independent verification | AI-assisted | A second, blind read of each document by DeepSeek that never sees pass 1's answer (DeepSeek integration in progress; Gemini runs this pass today) |
-| 7 | Deterministic comparison | Deterministic | Field-specific business rules: unit conversion, port codes, tolerances |
-| 8 | Case decision + evidence | Deterministic | State, reason, per-field evidence and audit events written to Supabase |
+| 1 | Mailbox intake | Deterministic + provider signals | Every 60 s, fetch new emails and attachments from connected mailboxes; capture sender, subject, body, attachment metadata, spam labels and authentication signals |
+| 2 | Email classification | Hybrid AI + rules | Deterministic rules handle obvious cases; Gemini classifies ambiguous emails into BL comparison, SI request, invoice query, general or spam |
+| 3 | Shipment case engine | Deterministic | Group related emails and document versions under the same shipment case so context accumulates over time |
+| 4 | Security & resource gate | Deterministic | Check real file type, size, encryption, page count, malformed files and archive expansion **before document parsing or AI processing** |
+| 5 | Document reading | Hybrid, isolated | Machine-readable PDF/DOCX/XLSX/text use local readers; scans use OCR/VLM fallback; parsing runs in helper processes with per-file timeout |
+| 6 | AI extraction | AI-assisted | Gemini interprets document structure and extracts the 7 canonical shipping fields into a fixed schema |
+| 7 | Deterministic validation + targeted retry | Hybrid recovery | Rules verify required fields, datatype, units and parseability; known failures trigger **one targeted AI/OCR recovery attempt** |
+| 8 | Independent AI verification | Dual-model AI | DeepSeek independently re-reads the source without seeing Gemini’s answer and cross-checks the extracted values; disagreement → Needs Review |
+| 9 | SI ↔ BL comparison | Deterministic | Field-specific rules compare verified values using normalization, unit conversion, port handling and numeric equality |
+| 10 | Case decision + evidence | Deterministic | Assign Verified, Discrepancy, Needs Review or Blocked; save reason, source evidence, retry trace and audit history to Supabase |
 
 The design follows one principle: **the model reads, the rules decide.**
 AI is used to classify mail and to read documents. The comparison, the
