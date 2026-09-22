@@ -1,0 +1,2 @@
+# Generated PDFs can look like text; never let line-ending conversion touch them.
+*.pdf binary
