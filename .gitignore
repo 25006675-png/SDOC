@@ -7,25 +7,28 @@
 .pytest_cache/
 .impeccable/live/sessions/
 sdoc-hackathon-bundle
-Averis1am/sdoc-hackathon-bundle/
+backend/sdoc-hackathon-bundle/
 
 # Gmail OAuth credentials and sync state
-Averis1am/data/gmail_token.json
-Averis1am/data/gmail_state.json
+backend/data/gmail_token.json
+backend/data/gmail_state.json
 
 # Mailbox attachments and runtime logs
-Averis1am/data/attachments/
-Averis1am/data/*.log
-Averis1am/data/spend_ledger.json
+backend/data/attachments/
+backend/data/*.log
+backend/data/spend_ledger.json
 
 # Claude Code session worktrees
 .claude/worktrees/
 
 # Outlook OAuth credentials and sync state
-Averis1am/data/outlook_token.json
-Averis1am/data/outlook_state.json
+backend/data/outlook_token.json
+backend/data/outlook_state.json
 
-# Generated locally: demo kit (python Averis1am/scripts/generate_demo_kit.py)
+# Generated locally: demo kit (python backend/scripts/generate_demo_kit.py)
 # and the Render environment file, which holds secrets
 demo-kit/
 render.env
+
+# Local archive: old slide decks, Supabase backups, image sources
+archive/

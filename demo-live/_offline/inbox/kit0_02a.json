@@ -1,0 +1,11 @@
+{
+  "email_id": "kit0_02a",
+  "from": "demo.sender@example.com",
+  "subject": "Draft BL for approval - 5PKG-93102",
+  "body": "Hi team,\n\nDraft BL from the carrier for 5PKG-93102. Please check it against our SI.\n\nRegards,\nDaniel\nShipping Desk",
+  "attachments": [
+    "attachments/kit0_02a/5PKG-93102_SI.pdf",
+    "attachments/kit0_02a/5PKG-93102_BL.pdf"
+  ],
+  "expect": "DISCREPANCY"
+}

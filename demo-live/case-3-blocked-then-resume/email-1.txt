@@ -1,0 +1,12 @@
+TO:       the mailbox connected to SDOC (send to ONE mailbox only)
+SUBJECT:  Draft BL (password protected) - 5PKG-93103
+ATTACH:   5PKG-93103_SI.pdf, 5PKG-93103_BL_locked.pdf
+EXPECT:   BLOCKED
+--------------------------------------------------------------------
+Hi team,
+
+Please compare the SI and draft BL for 5PKG-93103. The carrier sends drafts password protected; the password is 93103.
+
+Regards,
+Siti
+Shipping Desk

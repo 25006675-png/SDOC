@@ -1,0 +1,12 @@
+TO:       the mailbox connected to SDOC (send to ONE mailbox only)
+SUBJECT:  Draft BL unprotected copy - 5PKG-93103
+ATTACH:   5PKG-93103_SI.pdf, 5PKG-93103_BL.pdf
+EXPECT:   VERIFIED
+--------------------------------------------------------------------
+Hi team,
+
+The carrier has resent the draft BL for 5PKG-93103 without a password. SI attached again so you have both together.
+
+Regards,
+Siti
+Shipping Desk

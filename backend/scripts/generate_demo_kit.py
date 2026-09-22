@@ -456,7 +456,7 @@ def runbook(items, batch):
         "",
         "1. **Use a fresh batch for every run-through.** A reference that already has a case joins "
         "that case. Rehearse with `--batch 2`, `--batch 3`, and present with a batch you have never sent:",
-        "   `python Averis1am/scripts/generate_demo_kit.py --batch 4 --check`",
+        "   `python backend/scripts/generate_demo_kit.py --batch 4 --check`",
         "2. **Send to one mailbox only** (the default Outlook mailbox). Sending to both creates duplicates.",
         "3. **No signature images.** Outlook passes signature logos through as attachments, and an extra "
         "image breaks the SI + BL pair. Send plain emails.",
@@ -471,8 +471,8 @@ def runbook(items, batch):
         "have not sent, or these cases join the live ones. From the repository root:",
         "",
         "```powershell",
-        "Copy-Item -Recurse -Force demo-kit/_offline/attachments/* Averis1am/data/attachments/",
-        "cd Averis1am; python scripts/ingest_source.py ../demo-kit/_offline --verify",
+        "Copy-Item -Recurse -Force demo-kit/_offline/attachments/* backend/data/attachments/",
+        "cd backend; python scripts/ingest_source.py ../demo-kit/_offline --verify",
         "```",
         "",
         "The copy step lets the evidence pane render the pages; without it the crops show "

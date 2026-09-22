@@ -1,7 +1,7 @@
 # Secrets and local runtime state never go into the image.
 .env
 render.env
-Averis1am/data/
+backend/data/
 **/__pycache__/
 *.py[cod]
 *.db

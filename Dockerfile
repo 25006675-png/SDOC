@@ -1,5 +1,5 @@
 # SDOC web service. The API serves sdoc-app/ and sdoc-landing/ from the repo
-# root, so the whole repository is copied, then the app runs from Averis1am/.
+# root, so the whole repository is copied, then the app runs from backend/.
 FROM python:3.12-slim
 
 # tesseract lets the extraction recovery step OCR a scanned PDF.
@@ -10,11 +10,11 @@ RUN apt-get update \
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 
 WORKDIR /app
-COPY Averis1am/requirements.txt Averis1am/requirements.txt
-RUN pip install --no-cache-dir -r Averis1am/requirements.txt
+COPY backend/requirements.txt backend/requirements.txt
+RUN pip install --no-cache-dir -r backend/requirements.txt
 COPY . .
 
-WORKDIR /app/Averis1am
+WORKDIR /app/backend
 # Tokens, sync state and attachment copies live here; Render's disk is reset on each deploy.
 # Cases imported from the demo folders (not from a mailbox) point at these files, and
 # no mailbox can re-download them, so they ship in the image.

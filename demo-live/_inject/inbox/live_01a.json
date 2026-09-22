@@ -1,0 +1,11 @@
+{
+  "email_id": "live_01a",
+  "from": "aina.rahman@bluewaterglove.com.my",
+  "subject": "Draft BL check - 5PKG-93101 (Hamburg)",
+  "body": "Hi team,\n\nPlease compare the attached SI and draft BL for booking 5PKG-93101 before we approve the draft with the carrier.\n\nThanks,\nAina\nExport Documentation",
+  "attachments": [
+    "attachments/5PKG-93101_SI.pdf",
+    "attachments/5PKG-93101_BL.pdf"
+  ],
+  "provider": "outlook"
+}

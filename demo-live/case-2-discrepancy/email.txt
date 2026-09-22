@@ -1,0 +1,12 @@
+TO:       the mailbox connected to SDOC (send to ONE mailbox only)
+SUBJECT:  Draft BL for approval - 5PKG-93102
+ATTACH:   5PKG-93102_SI.pdf, 5PKG-93102_BL.pdf
+EXPECT:   DISCREPANCY
+--------------------------------------------------------------------
+Hi team,
+
+Draft BL from the carrier for 5PKG-93102. Please check it against our SI.
+
+Regards,
+Daniel
+Shipping Desk

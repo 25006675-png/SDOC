@@ -1,0 +1,11 @@
+{
+  "email_id": "kit0_01a",
+  "from": "demo.sender@example.com",
+  "subject": "Draft BL check - 5PKG-93101 (Hamburg)",
+  "body": "Hi team,\n\nPlease compare the attached SI and draft BL for booking 5PKG-93101 before we approve the draft with the carrier.\n\nThanks,\nAina\nExport Documentation",
+  "attachments": [
+    "attachments/kit0_01a/5PKG-93101_SI.pdf",
+    "attachments/kit0_01a/5PKG-93101_BL.pdf"
+  ],
+  "expect": "VERIFIED"
+}

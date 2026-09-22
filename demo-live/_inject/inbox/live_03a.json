@@ -1,0 +1,11 @@
+{
+  "email_id": "live_03a",
+  "from": "siti.aziz@hijaupalm.com.my",
+  "subject": "Draft BL (password protected) - 5PKG-93103",
+  "body": "Hi team,\n\nPlease compare the SI and draft BL for 5PKG-93103. The carrier sends drafts password protected; the password is 93103.\n\nRegards,\nSiti\nShipping Desk",
+  "attachments": [
+    "attachments/5PKG-93103_SI.pdf",
+    "attachments/5PKG-93103_BL_locked.pdf"
+  ],
+  "provider": "outlook"
+}

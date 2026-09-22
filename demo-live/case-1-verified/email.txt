@@ -1,0 +1,12 @@
+TO:       the mailbox connected to SDOC (send to ONE mailbox only)
+SUBJECT:  Draft BL check - 5PKG-93101 (Hamburg)
+ATTACH:   5PKG-93101_SI.pdf, 5PKG-93101_BL.pdf
+EXPECT:   VERIFIED
+--------------------------------------------------------------------
+Hi team,
+
+Please compare the attached SI and draft BL for booking 5PKG-93101 before we approve the draft with the carrier.
+
+Thanks,
+Aina
+Export Documentation

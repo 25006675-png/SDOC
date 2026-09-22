@@ -1,0 +1,11 @@
+{
+  "email_id": "kit0_03b",
+  "from": "demo.sender@example.com",
+  "subject": "Draft BL unprotected copy - 5PKG-93103",
+  "body": "Hi team,\n\nThe carrier has resent the draft BL for 5PKG-93103 without a password. SI attached again so you have both together.\n\nRegards,\nSiti\nShipping Desk",
+  "attachments": [
+    "attachments/kit0_03b/5PKG-93103_SI.pdf",
+    "attachments/kit0_03b/5PKG-93103_BL.pdf"
+  ],
+  "expect": "VERIFIED"
+}
